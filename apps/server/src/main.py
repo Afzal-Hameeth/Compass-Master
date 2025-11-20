@@ -2,7 +2,7 @@ import sys
 import os
 from pathlib import Path
 
-# Add src directory to Python path
+
 src_path = Path(__file__).parent
 sys.path.insert(0, str(src_path))
 from fastapi import FastAPI
@@ -18,14 +18,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 app.include_router(router, prefix="/api")
 
-# Register Tortoise ORM with FastAPI
+
 register_tortoise(
     app,
     db_url="sqlite://db.sqlite3",
@@ -39,8 +39,8 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "main:app",
-        host=env["HOST"],
-        port=int(env["PORT"]),
+        host='0.0.0.0',
+        port=8000,
         log_level=env["LOG_LEVEL"].lower(),
-        reload=True,
+        reload=False,
     )

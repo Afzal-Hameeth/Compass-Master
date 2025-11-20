@@ -1,3 +1,4 @@
+import enum
 from enum import Enum
 from tortoise import fields, models
 
@@ -9,10 +10,13 @@ class TimestampMixin(models.Model):
 class Domain(TimestampMixin):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=50)
+  capability = fields.ForeignKeyField('models.Capability', related_name='domains', null=True)
 
-class CapabilityName(TimestampMixin):
+class Capability(TimestampMixin):
     id = fields.IntField(pk=True)
-    name = fields.CharField(max_length=255, unique=True)
+    name = fields.CharField(max_length=255)
+    description = fields.CharField(max_length=255)
+
 
 class ProcessLevel(str, Enum):
     ENTERPRISE = "enterprise"
@@ -23,11 +27,6 @@ class ProcessLevel(str, Enum):
 class Process(TimestampMixin):
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
-    description = fields.TextField(null=True)
     level = fields.CharEnumField(ProcessLevel)
-    parent = fields.ForeignKeyField(
-        "models.Process",
-        related_name="children",
-        null=True,
-        on_delete=fields.CASCADE
-    )
+    description = fields.CharField(max_length=255)
+    capability = fields.ForeignKeyField('models.Capability', related_name='processes', null=True)

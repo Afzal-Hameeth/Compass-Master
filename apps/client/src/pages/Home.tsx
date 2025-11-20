@@ -2,119 +2,182 @@ import { useState } from 'react'
 import { FiEye, FiEdit2, FiEdit3, FiPlus, FiChevronRight, FiChevronDown, FiLayers } from 'react-icons/fi'
 import { Toaster, toast } from 'react-hot-toast'
 
-type Process = {
-  id: number
-  name: string
-  level: string
-  description: string
-}
 
-type Capability = {
-  id: number
-  vertical: string
-  name: string
-  description: string
-  processes: Process[]
-}
+import { useEffect } from 'react';
+import { useCapabilityApi } from '../hooks/useCapability';
+import type { Capability, Process } from '../hooks/useCapability';
+
 
 export default function Home() {
-  const verticalOptions = ['Vertical A', 'Vertical B', 'Vertical C']
-  const [selectedVertical, setSelectedVertical] = useState('')
-  const [capabilities, setCapabilities] = useState<Capability[]>([])
+  const domainOptions = ['Domain A', 'Domain B', 'Domain C'];
+  const [selectedDomain, setSelectedDomain] = useState('');
+  const [capabilities, setCapabilities] = useState<Capability[]>([]);
 
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add')
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
+  const [editingId, setEditingId] = useState<number | null>(null);
 
-  const [formName, setFormName] = useState('')
-  const [formDescription, setFormDescription] = useState('')
+  const [formName, setFormName] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+
+  const {
+    listCapabilities,
+    createCapability,
+    updateCapability,
+    deleteCapability,
+    listProcesses,
+    createProcess,
+    updateProcess,
+    deleteProcess,
+  } = useCapabilityApi();
+
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const caps = await listCapabilities();
+
+        const first = caps && caps.length > 0 ? (caps[0] as any) : null;
+        if (first && Array.isArray((first as any).processes)) {
+
+          const normalized = caps.map((c: any) => ({ ...c, processes: c.processes || [] }));
+          setCapabilities(normalized as Capability[]);
+        } else {
+
+          const allProcesses = await listProcesses();
+
+          const capMap: Record<number, Process[]> = {};
+          allProcesses.forEach((p: any) => {
+            const capId = p.capability_id || p.capability || p.capabilityId || p.capability?.id;
+            if (capId) {
+              if (!capMap[capId]) capMap[capId] = [];
+              capMap[capId].push(p);
+            }
+          });
+          setCapabilities(
+            caps.map((c: any) => ({ ...c, processes: capMap[c.id] || [] }))
+          );
+        }
+      } catch (e) {
+        toast.error('Failed to load capabilities');
+      }
+    }
+    load();
+  }, [listCapabilities, listProcesses]);
 
   function openAddModal() {
-    setModalMode('add')
-    setEditingId(null)
-    setFormName('')
-    setFormDescription('')
-    setIsModalOpen(true)
+    setModalMode('add');
+    setEditingId(null);
+    setFormName('');
+    setFormDescription('');
+    setIsModalOpen(true);
   }
 
   function openEditModal(cap: Capability) {
-    setModalMode('edit')
-    setEditingId(cap.id)
-    setFormName(cap.name)
-    setFormDescription(cap.description)
-    setIsModalOpen(true)
+    setModalMode('edit');
+    setEditingId(cap.id);
+    setFormName(cap.name);
+    setFormDescription(cap.description);
+    setIsModalOpen(true);
   }
 
   function openViewModal(cap: Capability) {
-    setModalMode('view')
-    setEditingId(cap.id)
-    setFormName(cap.name)
-    setFormDescription(cap.description)
-    setIsModalOpen(true)
+    setModalMode('view');
+    setEditingId(cap.id);
+    setFormName(cap.name);
+    setFormDescription(cap.description);
+    setIsModalOpen(true);
   }
 
-  function saveCapability() {
-    if (modalMode === 'add') {
-      const newCap: Capability = {
-        id: Date.now(),
-        vertical: selectedVertical,
-        name: formName,
-        description: formDescription,
-        processes: [],
+  async function saveCapability() {
+    try {
+      if (modalMode === 'add') {
+        const newCap = await createCapability({
+          domain: selectedDomain,
+          name: formName,
+          description: formDescription,
+        });
+        setCapabilities((s) => [
+          { ...newCap, processes: [] },
+          ...s,
+        ]);
+        toast.success('Successfully added capability');
+      } else if (modalMode === 'edit' && editingId != null) {
+        const updated = await updateCapability(editingId, {
+          name: formName,
+          description: formDescription,
+        });
+        setCapabilities((s) =>
+          s.map((c) => (c.id === editingId ? { ...c, ...updated } : c))
+        );
+        toast.success('Successfully updated capability');
       }
-      setCapabilities((s) => [newCap, ...s])
-      toast.success('Successfully added capability')
-    } else if (modalMode === 'edit' && editingId != null) {
-      setCapabilities((s) =>
-        s.map((c) => (c.id === editingId ? { ...c, name: formName, description: formDescription } : c)),
-      )
-      toast.success('Successfully updated capability')
+    } catch (e) {
+      toast.error('Failed to save capability');
     }
-    setIsModalOpen(false)
+    setIsModalOpen(false);
   }
 
- 
-  const [isProcessModalOpen, setIsProcessModalOpen] = useState(false)
-  const [processCapId, setProcessCapId] = useState<number | null>(null)
-  const [processName, setProcessName] = useState('')
-  const [processLevel, setProcessLevel] = useState('Level 1 - Enterprise process')
-  const [processDescription, setProcessDescription] = useState('')
+
+  const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
+  const [processCapId, setProcessCapId] = useState<number | null>(null);
+  const [processName, setProcessName] = useState('');
+  const [processLevel, setProcessLevel] = useState('Level 1 - Enterprise process');
+  const [processDescription, setProcessDescription] = useState('');
 
   const processLevelOptions = [
-    'Level 1 - Enterprise process',
-    'Level 2 - Core process',
-    'Level 3 - Process',
-    'Level 4 - Subprocess',
-  ]
+    'enterprise',
+    'core',
+    'process',
+    'subprocess',
+  ];
 
   function openProcessModal(capId: number) {
-    setProcessCapId(capId)
-    setProcessName('')
-    setProcessLevel(processLevelOptions[0])
-    setProcessDescription('')
-    setIsProcessModalOpen(true)
+    setProcessCapId(capId);
+    setProcessName('');
+    setProcessLevel(processLevelOptions[0]);
+    setProcessDescription('');
+    setIsProcessModalOpen(true);
   }
 
-  function saveProcess() {
-    if (!processName.trim() || processCapId == null) return
-    const newProcess: Process = {
-      id: Date.now(),
-      name: processName.trim(),
-      level: processLevel,
-      description: processDescription.trim(),
+  async function saveProcess() {
+    if (!processName.trim() || processCapId == null) return;
+    try {
+
+      let backendLevel = processLevel;
+      if (processLevel.startsWith('Level 1')) backendLevel = 'enterprise';
+      else if (processLevel.startsWith('Level 2')) backendLevel = 'core';
+      else if (processLevel.startsWith('Level 3')) backendLevel = 'process';
+      else if (processLevel.startsWith('Level 4')) backendLevel = 'subprocess';
+
+
+      const newProcess = await createProcess({
+        name: processName.trim(),
+        level: backendLevel,
+        description: processDescription.trim(),
+        capability_id: processCapId,
+      } as any);
+      setCapabilities((s) =>
+        s.map((c) =>
+          c.id === processCapId ? { ...c, processes: [...(c.processes || []), newProcess] } : c
+        )
+      );
+      setIsProcessModalOpen(false);
+      toast.success('Successfully added Process');
+    } catch (e) {
+      toast.error('Failed to add process');
     }
-    setCapabilities((s) => s.map((c) => (c.id === processCapId ? { ...c, processes: [...c.processes, newProcess] } : c)))
-    setIsProcessModalOpen(false)
-    toast.success('Successfully added Process')
   }
 
-  const [expandedIds, setExpandedIds] = useState<number[]>([])
+
+  const [expandedIds, setExpandedIds] = useState<number[]>([]);
 
   function toggleExpand(capId: number) {
-    setExpandedIds((prev) => (prev.includes(capId) ? prev.filter((id) => id !== capId) : [capId, ...prev]))
+    setExpandedIds((prev) => (prev.includes(capId) ? prev.filter((id) => id !== capId) : [capId, ...prev]));
   }
 
-  const parentCap = capabilities.find((c) => c.id === processCapId)
+
+  const parentCap = capabilities.find((c) => c.id === processCapId);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -137,11 +200,11 @@ export default function Home() {
         <div className="flex items-center gap-4 mb-6">
           <select
             className="border rounded px-3 py-2"
-            value={selectedVertical}
-            onChange={(e) => setSelectedVertical(e.target.value)}
+            value={selectedDomain}
+            onChange={(e) => setSelectedDomain(e.target.value)}
           >
-            <option value="">Select vertical</option>
-            {verticalOptions.map((v) => (
+            <option value="">Select Domain</option>
+            {domainOptions.map((v) => (
               <option key={v} value={v}>
                 {v}
               </option>
@@ -149,8 +212,8 @@ export default function Home() {
           </select>
 
           <button
-            className={`px-4 py-2 rounded-md text-white ${selectedVertical ? 'bg-white text-primary border border-primary rounded font-normal hover:bg-primary hover:text-white transition-colors' : 'bg-gray-400 cursor-not-allowed'}`}
-            disabled={!selectedVertical}
+            className={`px-4 py-2 rounded-md ${selectedDomain ? 'bg-white text-blue-600 border border-primary rounded font-normal hover:bg-primary hover:text-white transition-colors' : 'bg-gray-400 cursor-not-allowed'}`}
+            disabled={!selectedDomain}
             onClick={openAddModal}
           >
             Add capability
@@ -182,7 +245,7 @@ export default function Home() {
 
                           <div>
                             <div className="text-lg font-semibold">{c.name}</div>
-                            <div className="text-xs text-gray-500">Vertical: {c.vertical}</div>
+                            <div className="text-xs text-gray-500">: {c.domain}</div>
                             <div className="mt-2 text-sm text-gray-600">{c.description}</div>
                           </div>
                         </div>
@@ -283,7 +346,7 @@ export default function Home() {
               <h2 className="text-lg font-bold text-gray-900">
                 {modalMode === 'view' ? 'View capability' : modalMode === 'edit' ? 'Edit capability' : 'Add capability'}
               </h2>
-              {selectedVertical && <span className="text-xs text-gray-400 ml-2">to {selectedVertical}</span>}
+              {selectedDomain && <span className="text-xs text-gray-400 ml-2">to {selectedDomain}</span>}
             </div>
 
             <div className="p-6">
