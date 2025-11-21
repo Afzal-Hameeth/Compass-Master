@@ -5,11 +5,11 @@ import { Toaster, toast } from 'react-hot-toast'
 
 import { useEffect } from 'react';
 import { useCapabilityApi } from '../hooks/useCapability';
-import type { Capability, Process } from '../hooks/useCapability';
+import type { Capability, Process, Domain } from '../hooks/useCapability';
 
 
 export default function Home() {
-  const domainOptions = ['Domain A', 'Domain B', 'Domain C'];
+  const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState('');
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
 
@@ -21,20 +21,21 @@ export default function Home() {
   const [formDescription, setFormDescription] = useState('');
 
   const {
+    listDomains,
     listCapabilities,
     createCapability,
     updateCapability,
-    deleteCapability,
     listProcesses,
     createProcess,
-    updateProcess,
-    deleteProcess,
   } = useCapabilityApi();
 
 
   useEffect(() => {
     async function load() {
       try {
+        const doms = await listDomains();
+        setDomains(doms);
+        
         const caps = await listCapabilities();
 
         const first = caps && caps.length > 0 ? (caps[0] as any) : null;
@@ -204,9 +205,9 @@ export default function Home() {
             onChange={(e) => setSelectedDomain(e.target.value)}
           >
             <option value="">Select Domain</option>
-            {domainOptions.map((v) => (
-              <option key={v} value={v}>
-                {v}
+            {domains.map((domain) => (
+              <option key={domain.id} value={domain.name}>
+                {domain.name}
               </option>
             ))}
           </select>
