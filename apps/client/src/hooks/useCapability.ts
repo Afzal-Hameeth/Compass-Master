@@ -1,7 +1,12 @@
-import { useState, useCallback } from 'react';
-import toast from 'react-hot-toast';
-import { API } from '../utils/constants';
+import { useCallback } from 'react';
 
+
+export type Domain = {
+	id: number;
+	name: string;
+	created_at: string;
+	updated_at: string;
+};
 
 export type Process = {
 	id: number;
@@ -31,6 +36,32 @@ async function fetcher<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export function useCapabilityApi() {
+
+	const listDomains = useCallback(async () => {
+		return fetcher<Domain[]>(`${BASE_URL}/domains`);
+	}, []);
+
+	const createDomain = useCallback(async (data: Omit<Domain, 'id' | 'created_at' | 'updated_at'>) => {
+		const res = await fetcher<Domain>(`${BASE_URL}/domains`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(data),
+		});
+		return res;
+	}, []);
+
+	const updateDomain = useCallback(async (id: number, data: Partial<Domain>) => {
+		const res = await fetcher<Domain>(`${BASE_URL}/domains/${id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(data),
+		});
+		return res;
+	}, []);
+
+	const deleteDomain = useCallback(async (id: number) => {
+		await fetcher(`${BASE_URL}/domains/${id}`, { method: 'DELETE' });
+	}, []);
 
 	const listCapabilities = useCallback(async () => {
 		return fetcher<Capability[]>(`${BASE_URL}/capabilities`);
@@ -90,6 +121,10 @@ export function useCapabilityApi() {
 	}, []);
 
 	return {
+		listDomains,
+		createDomain,
+		updateDomain,
+		deleteDomain,
 		listCapabilities,
 		createCapability,
 		updateCapability,

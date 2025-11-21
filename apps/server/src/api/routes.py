@@ -5,15 +5,20 @@ from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.contrib.pydantic import pydantic_model_creator
 
-from database.repositories import capability_repository, process_repository
-from database.models import Capability as CapabilityModel, Process as ProcessModel
+from database.repositories import capability_repository, process_repository, domain_repository
+from database.models import Capability as CapabilityModel, Process as ProcessModel, Domain as DomainModel
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+Domain_Pydantic = pydantic_model_creator(DomainModel, name="Domain")
 Capability_Pydantic = pydantic_model_creator(CapabilityModel, name="Capability")
 Process_Pydantic = pydantic_model_creator(ProcessModel, name="Process")
+
+
+class DomainCreateRequest(BaseModel):
+    name: str
 
 
 class CapabilityCreateRequest(BaseModel):
@@ -32,6 +37,43 @@ class ProcessCreateRequest(BaseModel):
 @router.get("/health")
 async def health_check():
     return JSONResponse(content={"status": "ok"}, status_code=200)
+
+
+# CRUD for Domains
+@router.post("/domains", response_model=Domain_Pydantic)
+async def create_domain(payload: DomainCreateRequest):
+    obj = await domain_repository.create_domain(payload.name)
+    return await Domain_Pydantic.from_tortoise_orm(obj)
+
+
+@router.get("/domains", response_model=List[Domain_Pydantic])
+async def list_domains():
+    domains = await domain_repository.fetch_all_domains()
+    return await Domain_Pydantic.from_queryset(DomainModel.all())
+
+
+@router.get("/domains/{domain_id}", response_model=Domain_Pydantic)
+async def get_domain(domain_id: int):
+    obj = await domain_repository.fetch_domain_by_id(domain_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    return await Domain_Pydantic.from_tortoise_orm(obj)
+
+
+@router.put("/domains/{domain_id}", response_model=Domain_Pydantic)
+async def update_domain(domain_id: int, payload: DomainCreateRequest):
+    obj = await domain_repository.update_domain(domain_id, payload.name)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    return await Domain_Pydantic.from_tortoise_orm(obj)
+
+
+@router.delete("/domains/{domain_id}")
+async def delete_domain(domain_id: int):
+    ok = await domain_repository.delete_domain(domain_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    return {"deleted": True}
 
 
 @router.post("/capabilities", response_model=Capability_Pydantic)
