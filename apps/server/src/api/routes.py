@@ -21,7 +21,6 @@ Process_Pydantic = pydantic_model_creator(ProcessModel, name="Process")
 class DomainCreateRequest(BaseModel):
     name: str
 
-
 class CapabilityCreateRequest(BaseModel):
     name: str
     description: str

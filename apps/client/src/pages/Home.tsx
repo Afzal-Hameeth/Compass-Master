@@ -26,25 +26,24 @@ export default function Home() {
     createCapability,
     updateCapability,
     listProcesses,
-    createProcess,
     generateProcesses,
   } = useCapabilityApi();
 
   const loadedRef = useRef(false);
 
-  
+
   useEffect(() => {
     const prev = document.documentElement.style.overflowY;
     try {
       document.documentElement.style.overflowY = 'scroll';
     } catch (e) {
-      
+
     }
     return () => {
       try {
         document.documentElement.style.overflowY = prev;
       } catch (e) {
-        
+
       }
     };
   }, []);
@@ -143,9 +142,7 @@ export default function Home() {
 
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [processCapId, setProcessCapId] = useState<number | null>(null);
-  const [processName, setProcessName] = useState('');
-  const [processLevel, setProcessLevel] = useState('Level 1 - Enterprise process');
-  const [processDescription, setProcessDescription] = useState('');
+  const [processLevel, setProcessLevel] = useState('core');
   const [isGenerating, setIsGenerating] = useState(false);
 
   const processLevelOptions = [
@@ -157,52 +154,28 @@ export default function Home() {
 
   function openProcessModal(capId: number) {
     setProcessCapId(capId);
-    setProcessName('');
-    setProcessLevel(processLevelOptions[0]);
-    setProcessDescription('');
+    setProcessLevel('core');
     setIsProcessModalOpen(true);
   }
 
-  async function saveProcess() {
-    if (!processName.trim() || processCapId == null) return;
-    try {
-
-      let backendLevel = processLevel;
-      if (processLevel.startsWith('Level 1')) backendLevel = 'enterprise';
-      else if (processLevel.startsWith('Level 2')) backendLevel = 'core';
-      else if (processLevel.startsWith('Level 3')) backendLevel = 'process';
-      else if (processLevel.startsWith('Level 4')) backendLevel = 'subprocess';
-
-
-      const newProcess = await createProcess({
-        name: processName.trim(),
-        level: backendLevel,
-        description: processDescription.trim(),
-        capability_id: processCapId,
-      } as any);
-      setCapabilities((s) =>
-        s.map((c) =>
-          c.id === processCapId ? { ...c, processes: [...(c.processes || []), newProcess] } : c
-        )
-      );
-      setIsProcessModalOpen(false);
-      toast.success('Successfully added Process');
-    } catch (e) {
-      toast.error('Failed to add process');
-    }
-  }
-
   async function handleGenerateProcess() {
-    if (!processName.trim() || processCapId == null) return;
+    if (processCapId == null) return;
     try {
       setIsGenerating(true);
-      const result = await generateProcesses(processName.trim(), processCapId);
+      // Get the capability name to pass to the LLM
+      const parentCapability = capabilities.find((c) => c.id === processCapId);
+      if (!parentCapability) {
+        toast.error('Capability not found');
+        return;
+      }
+
+      const result = await generateProcesses(parentCapability.name, processCapId);
 
       if (result.status === 'success') {
-        
+
         const coreProcesses = result.data?.core_processes || result.data?.['Core Processes'] || [];
 
-        
+
         setCapabilities((prevCaps) =>
           prevCaps.map((c) =>
             c.id === processCapId
@@ -228,8 +201,6 @@ export default function Home() {
 
         toast.success(`Successfully generated ${coreProcesses.length} processes`);
         setIsProcessModalOpen(false);
-        setProcessName('');
-        setProcessDescription('');
       } else {
         toast.error('Failed to generate processes');
       }
@@ -496,15 +467,13 @@ export default function Home() {
             </div>
 
             <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Process name</label>
-              <input
-                className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="Enter process name..."
-                value={processName}
-                onChange={(e) => setProcessName(e.target.value)}
-              />
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-700">
+                  <strong>Auto-generate processes</strong> based on the capability name using AI. The system will create a complete process hierarchy with subprocesses.
+                </p>
+              </div>
 
-              <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">Level</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Process Level</label>
               <select
                 className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 value={processLevel}
@@ -517,43 +486,21 @@ export default function Home() {
                 ))}
               </select>
 
-              <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">Description</label>
-              <textarea
-                className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px] resize-y"
-                placeholder="Enter process description..."
-                rows={3}
-                value={processDescription}
-                onChange={(e) => setProcessDescription(e.target.value)}
-              />
-
               <div className="flex justify-end gap-3 mt-6">
                 <button
                   className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 font-medium"
-                  onClick={() => {
-                    setIsProcessModalOpen(false)
-                    setProcessName('')
-                    setProcessLevel(processLevelOptions[0])
-                    setProcessDescription('')
-                  }}
+                  onClick={() => setIsProcessModalOpen(false)}
                 >
                   Cancel
                 </button>
                 <button
                   className="px-4 py-1.5 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={handleGenerateProcess}
-                  disabled={!processName.trim() || isGenerating}
+                  disabled={isGenerating}
                   title="Generate processes using AI"
                 >
                   <FiPlus className="w-4 h-4" />
-                  {isGenerating ? 'Generating...' : 'Generate'}
-                </button>
-                <button
-                  className="px-4 py-1.5 bg-green-600 text-white rounded-md font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  onClick={saveProcess}
-                  disabled={!processName.trim()}
-                >
-                  <FiPlus className="w-4 h-4" />
-                  Add process
+                  {isGenerating ? 'Generating...' : 'Generate with AI'}
                 </button>
               </div>
             </div>
