@@ -10,12 +10,13 @@ class TimestampMixin(models.Model):
 class Domain(TimestampMixin):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=50)
-  capability = fields.ForeignKeyField('models.Capability', related_name='domains', null=True)
+
 
 class Capability(TimestampMixin):
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
     description = fields.CharField(max_length=255)
+    domain = fields.ForeignKeyField('models.Domain', related_name='capabilities', null=True)
 
 
 class ProcessLevel(str, Enum):

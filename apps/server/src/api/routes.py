@@ -26,6 +26,7 @@ class CapabilityCreateRequest(BaseModel):
     name: str
     description: str
     process_id: Optional[int] = None
+    domain_id: Optional[int] = None
 
 
 class ProcessCreateRequest(BaseModel):
@@ -79,7 +80,7 @@ async def delete_domain(domain_id: int):
 
 @router.post("/capabilities", response_model=Capability_Pydantic)
 async def create_capability(payload: CapabilityCreateRequest):
-    obj = await capability_repository.create_capability(payload.name, payload.description)
+    obj = await capability_repository.create_capability(payload.name, payload.description, payload.domain_id)
     return await Capability_Pydantic.from_tortoise_orm(obj)
 
 
@@ -109,6 +110,7 @@ async def list_capabilities():
             "id": c.id,
             "name": c.name,
             "description": c.description,
+            "domain": c.domain.name if getattr(c, 'domain', None) else None,
             "processes": proc_list,
         })
 
@@ -125,7 +127,7 @@ async def get_capability(capability_id: int):
 
 @router.put("/capabilities/{capability_id}", response_model=Capability_Pydantic)
 async def update_capability(capability_id: int, payload: CapabilityCreateRequest):
-    obj = await capability_repository.update_capability(capability_id, name=payload.name, description=payload.description)
+    obj = await capability_repository.update_capability(capability_id, name=payload.name, description=payload.description, domain_id=payload.domain_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Capability not found")
     return await Capability_Pydantic.from_tortoise_orm(obj)

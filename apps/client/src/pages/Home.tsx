@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { FiEye, FiEdit2, FiEdit3, FiPlus, FiChevronRight, FiChevronDown, FiLayers } from 'react-icons/fi'
+import { useState, useEffect, useRef } from 'react'
+import { FiEye, FiEdit2, FiEdit3, FiPlus, FiChevronRight, FiChevronDown, FiLayers, } from 'react-icons/fi'
 import { Toaster, toast } from 'react-hot-toast'
 
 
-import { useEffect } from 'react';
 import { useCapabilityApi } from '../hooks/useCapability';
 import type { Capability, Process, Domain } from '../hooks/useCapability';
+import favicon from '../assets/favicon.png';
 
 
 export default function Home() {
@@ -30,8 +30,28 @@ export default function Home() {
     generateProcesses,
   } = useCapabilityApi();
 
+  const loadedRef = useRef(false);
+
+  
+  useEffect(() => {
+    const prev = document.documentElement.style.overflowY;
+    try {
+      document.documentElement.style.overflowY = 'scroll';
+    } catch (e) {
+      
+    }
+    return () => {
+      try {
+        document.documentElement.style.overflowY = prev;
+      } catch (e) {
+        
+      }
+    };
+  }, []);
 
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     async function load() {
       try {
         const doms = await listDomains();
@@ -179,17 +199,17 @@ export default function Home() {
       const result = await generateProcesses(processName.trim(), processCapId);
 
       if (result.status === 'success') {
-        // Parse core_processes from LLM response
+        
         const coreProcesses = result.data?.core_processes || result.data?.['Core Processes'] || [];
 
-        // Update capabilities state to include generated core processes (nested)
+        
         setCapabilities((prevCaps) =>
           prevCaps.map((c) =>
             c.id === processCapId
               ? {
                   ...c,
                   processes: coreProcesses.map((proc: any, idx: number) => ({
-                    id: idx + 10000, // temp id for frontend
+                    id: idx + 10000,
                     name: proc.name,
                     description: proc.description,
                     level: 'core',
@@ -230,9 +250,12 @@ export default function Home() {
 
 
   const parentCap = capabilities.find((c) => c.id === processCapId);
+  const selectedDomainName = domains.find((d) => String(d.id) === selectedDomain)?.name;
+  const currentCap = editingId != null ? capabilities.find((c) => c.id === editingId) : undefined;
+  const capDomainName = currentCap?.domain ?? selectedDomainName;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50">
       <Toaster
         position="top-right"
         toastOptions={{
@@ -243,28 +266,44 @@ export default function Home() {
           },
         }}
       />
-      <div className="max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-sm">
+      <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
+          <div className="container px-6 py-4">
+              <div className="flex items-center gap-3">
+                <img src={favicon} width={40} height={40} alt="favicon" />
+                <div>
+                    <h1 className="text-xl font-semibold">Capability Master™</h1>
+                    <p className="text-xs text-muted-foreground">
+                      Manage your enterprise capabilities and their associated processes.
+                    </p>
+                </div>
+              </div>
+          </div>
+      </header>
+
+      <div className="mx-auto mt-6 bg-white p-6 px-8 rounded-lg shadow-sm max-w-6xl">
         <div className="flex items-center gap-3 mb-6">
           <FiLayers className="w-8 h-8" />
-          <h1 className="text-2xl font-semibold">Capabilities</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Capabilities</h1>
         </div>
 
         <div className="flex items-center gap-4 mb-6">
-          <select
-            className="border rounded px-3 py-2"
-            value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-          >
-            <option value="">Select Domain</option>
-            {domains.map((domain) => (
-              <option key={domain.id} value={domain.name}>
-                {domain.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-3">
+            <select
+              className="border rounded-md px-3 py-2 bg-white text-sm text-gray-700 focus:ring-2 focus:ring-indigo-200"
+              value={selectedDomain}
+              onChange={(e) => setSelectedDomain(e.target.value)}
+            >
+              <option value="">Select Domain</option>
+              {domains.map((domain) => (
+                <option key={domain.id} value={String(domain.id)}>
+                  {domain.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <button
-            className={`px-4 py-2 rounded-md ${selectedDomain ? 'bg-white text-blue-600 border border-primary rounded font-normal hover:bg-primary hover:text-white transition-colors' : 'bg-gray-400 cursor-not-allowed'}`}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${selectedDomain ? 'bg-gray-100 border border-primary text-indigo-600 hover:bg-indigo-700 hover:text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
             disabled={!selectedDomain}
             onClick={openAddModal}
           >
@@ -279,15 +318,14 @@ export default function Home() {
             <ul className="space-y-4">
               {capabilities.map((c) => {
                 const isExpanded = expandedIds.includes(c.id)
-                
 
                 return (
-                  <li key={c.id} className="bg-gray-50 border border-gray-200 rounded-2xl">
+                  <li key={c.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                     <div className="p-4 flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
                           <button
-                            className="text-gray-500 p-2 rounded hover:bg-gray-100 flex items-center justify-center"
+                            className="text-gray-400 p-2 rounded-md hover:bg-gray-50 flex items-center justify-center"
                             onClick={() => toggleExpand(c.id)}
                             aria-expanded={isExpanded}
                             title={isExpanded ? 'Collapse' : 'Expand'}
@@ -296,16 +334,18 @@ export default function Home() {
                           </button>
 
                           <div>
-                            <div className="text-lg font-semibold">{c.name}</div>
-                            <div className="text-xs text-gray-500">: {c.domain}</div>
-                            <div className="mt-2 text-sm text-gray-600">{c.description}</div>
+                            <div className="text-lg font-semibold text-gray-900">{c.name}</div>
+                            <div className="mt-1">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">{c.domain ?? 'Unassigned'}</span>
+                            </div>
+                            <div className="mt-3 text-sm text-gray-600">{c.description}</div>
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
-                          className="w-9 h-9 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100"
+                          className="w-9 h-9 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-50"
                           onClick={() => openViewModal(c)}
                           title="View"
                           aria-label="View capability"
@@ -314,7 +354,7 @@ export default function Home() {
                         </button>
 
                         <button
-                          className="w-9 h-9 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100"
+                          className="w-9 h-9 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-50"
                           onClick={() => openEditModal(c)}
                           title="Edit"
                           aria-label="Edit capability"
@@ -323,7 +363,7 @@ export default function Home() {
                         </button>
 
                         <button
-                          className="w-9 h-9 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                          className="w-9 h-9 flex items-center justify-center rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
                           onClick={() => openProcessModal(c.id)}
                           title="Add process"
                           aria-label="Add process"
@@ -345,7 +385,7 @@ export default function Home() {
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <div className="font-medium text-gray-800">{p.name}</div>
-                                    <div className="text-xs text-gray-500 mt-1">{p.level}</div>
+                                    <div className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700">{p.level}</div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100" title="View process" aria-label="View process">
@@ -361,11 +401,11 @@ export default function Home() {
                                 </div>
                                 {p.description && <div className="mt-3 text-sm text-gray-600">{p.description}</div>}
                                 {/* Render subprocesses nested below core process */}
-                                {Array.isArray(p.subprocesses) && p.subprocesses.length > 0 && (
+                                {Array.isArray((p as any).subprocesses) && (p as any).subprocesses.length > 0 && (
                                   <div className="ml-6 mt-3">
                                     <div className="font-semibold text-gray-700 text-sm mb-1">Subprocesses:</div>
                                     <ul className="space-y-2">
-                                      {p.subprocesses.map((sub) => (
+                                      {(p as any).subprocesses.map((sub: any) => (
                                         <li key={sub.id} className="pl-3 border-l-2 border-blue-200">
                                           <div className="text-gray-800 font-medium">{sub.name}</div>
                                           <div className="text-xs text-gray-500">Phase: {sub.lifecycle_phase}</div>
@@ -397,7 +437,7 @@ export default function Home() {
               <h2 className="text-lg font-bold text-gray-900">
                 {modalMode === 'view' ? 'View capability' : modalMode === 'edit' ? 'Edit capability' : 'Add capability'}
               </h2>
-              {selectedDomain && <span className="text-xs text-gray-400 ml-2">to {selectedDomain}</span>}
+              {capDomainName && <span className="text-xs text-gray-400 ml-2">to {capDomainName}</span>}
             </div>
 
             <div className="p-6">
@@ -505,7 +545,7 @@ export default function Home() {
                   title="Generate processes using AI"
                 >
                   <FiPlus className="w-4 h-4" />
-                  {isGenerating ? 'Generating...' : 'Generate with AI'}
+                  {isGenerating ? 'Generating...' : 'Generate'}
                 </button>
                 <button
                   className="px-4 py-1.5 bg-green-600 text-white rounded-md font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"

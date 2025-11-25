@@ -68,10 +68,18 @@ export function useCapabilityApi() {
 	}, []);
 
 	const createCapability = useCallback(async (data: Omit<Capability, 'id' | 'processes'>) => {
+		// Accept either `domain` or `domain_id` in the payload and normalize to `domain_id`
+		const payload: any = { ...data } as any;
+		if ((payload as any).domain !== undefined && (payload as any).domain !== null) {
+			// selectedDomain in UI may be a string; ensure it's a number when possible
+			const parsed = Number((payload as any).domain);
+			payload.domain_id = Number.isNaN(parsed) ? (payload as any).domain : parsed;
+			delete payload.domain;
+		}
 		const res = await fetcher<Capability>(`${BASE_URL}/capabilities`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(data),
+			body: JSON.stringify(payload),
 		});
 		return res;
 	}, []);
