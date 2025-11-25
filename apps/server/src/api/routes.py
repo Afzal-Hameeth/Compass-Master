@@ -7,6 +7,7 @@ from tortoise.contrib.pydantic import pydantic_model_creator
 
 from database.repositories import capability_repository, process_repository, domain_repository
 from database.models import Capability as CapabilityModel, Process as ProcessModel, Domain as DomainModel
+from utils.llm import azure_openai_client
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -179,5 +180,120 @@ async def delete_process(process_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="Process not found")
     return {"deleted": True}
+
+
+class GenerateProcessRequest(BaseModel):
+    process_name: str
+    capability_id: int
+
+
+@router.post("/processes/generate")
+async def generate_processes(payload: GenerateProcessRequest):
+    """Generate processes using LLM and save them to the database"""
+    try:
+        logger.info(f"/processes/generate called with payload: process_name={payload.process_name}, capability_id={payload.capability_id}")
+        # Call the LLM to generate processes
+        logger.info("Calling azure_openai_client.generate_processes...")
+        print(f"[DEBUG] /processes/generate payload: process_name={payload.process_name}, capability_id={payload.capability_id}")
+        try:
+            llm_result = await azure_openai_client.generate_processes(payload.process_name)
+            logger.info(f"LLM returned: {llm_result}")
+            print(f"[DEBUG] LLM returned: {llm_result}")
+        except Exception as e:
+            # Log and surface LLM errors so they're visible in server logs/response
+            logger.exception("LLM call failed")
+            print(f"[DEBUG] LLM call failed: {e}")
+            raise HTTPException(status_code=500, detail=f"LLM call failed: {str(e)}")
+        
+        if llm_result.get("status") != "success":
+            raise HTTPException(status_code=500, detail="Failed to generate processes from LLM")
+        
+        generated_data = llm_result.get("data", {})
+
+        # Normalize different possible keys returned by various LLM prompts/parsers.
+        def _extract_core_processes(data):
+            # If the LLM returned a list directly, treat it as core processes
+            if isinstance(data, list):
+                return data
+            if not isinstance(data, dict):
+                return []
+
+            # Try common variants (case / spacing / snake/camel)
+            candidates = [
+                "core_processes",
+                "coreProcesses",
+                "Core Processes",
+                "core processes",
+                "core-processes",
+                "processes",
+                "core",
+            ]
+            for key in candidates:
+                if key in data:
+                    val = data.get(key)
+                    return val if isinstance(val, list) else []
+
+            # Try a case-insensitive, punctuation-insensitive match
+            lookup = {re.sub(r"[^a-z0-9]", "", k.lower()): v for k, v in data.items()}
+            for target in ("coreprocesses", "coreprocess", "processes"):
+                if target in lookup:
+                    val = lookup[target]
+                    return val if isinstance(val, list) else []
+
+            return []
+
+        core_processes = _extract_core_processes(generated_data)
+
+        if not core_processes:
+            # Provide more debug info when parsing failed so frontend can act accordingly
+            logger.error("No core processes extracted from LLM result. llm_result keys=%s raw_snippet=%s",
+                         list(generated_data.keys()) if isinstance(generated_data, dict) else type(generated_data),
+                         llm_result.get('raw', '')[:1000])
+            raise HTTPException(status_code=400, detail="No processes were generated")
+        
+        # Verify capability exists
+        capability = await capability_repository.fetch_by_id(payload.capability_id)
+        if not capability:
+            raise HTTPException(status_code=404, detail="Capability not found")
+        
+        # Create processes in the database
+        created_processes = []
+        for core_proc in core_processes:
+            # Create the core process
+            core_proc_obj = await process_repository.create_process(
+                name=core_proc.get("name", ""),
+                level="core",
+                description=core_proc.get("description", ""),
+                capability_id=payload.capability_id,
+            )
+            
+            created_processes.append({
+                "id": core_proc_obj.id,
+                "name": core_proc_obj.name,
+                "level": core_proc_obj.level,
+                "description": core_proc_obj.description,
+            })
+            
+            # Create subprocesses
+            subprocesses = core_proc.get("subprocesses", [])
+            for subprocess in subprocesses:
+                subprocess_obj = await process_repository.create_process(
+                    name=subprocess.get("name", ""),
+                    level="subprocess",
+                    description=subprocess.get("description", ""),
+                    capability_id=payload.capability_id,
+                )
+        
+        return {
+            "status": "success",
+            "message": f"Successfully generated and saved {len(core_processes)} core processes",
+            "processes": created_processes,
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating processes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate processes: {str(e)}")
 
 

@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
 from env import env
 from tortoise.contrib.fastapi import register_tortoise
+import sqlite3
+from pathlib import Path
+import logging
 
 app = FastAPI(
     title="Compass Master API",
@@ -33,6 +36,62 @@ register_tortoise(
     generate_schemas=True,
     add_exception_handlers=True,
 )
+
+
+# Ensure DB schema compatibility on startup (add missing columns when safe)
+logger = logging.getLogger(__name__)
+
+def _ensure_process_capability_column():
+    """Synchronous helper: check sqlite process table for capability_id column and add it if missing.
+
+    This uses sqlite3 directly because altering an existing sqlite table is simpler
+    than attempting to programmatically migrate via Tortoise here. If your DB is
+    stored elsewhere or you prefer proper migrations, use a migration tool or
+    drop+recreate the DB after backing up.
+    """
+    # candidate paths where db.sqlite3 may live
+    candidates = [
+        Path("db.sqlite3"),
+        Path(__file__).parent / "db.sqlite3",
+        Path(__file__).parent.parent / "db.sqlite3",
+    ]
+
+    for db_path in candidates:
+        try:
+            if not db_path.exists():
+                continue
+            conn = sqlite3.connect(str(db_path))
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(process);")
+            rows = cur.fetchall()
+            cols = [r[1] for r in rows]
+            if "capability_id" not in cols:
+                logger.info(f"Adding missing column 'capability_id' to process table in {db_path}")
+                cur.execute("ALTER TABLE process ADD COLUMN capability_id INTEGER;")
+                conn.commit()
+            cur.close()
+            conn.close()
+            # stop after first existing db handled
+            return
+        except Exception as e:
+            logger.warning(f"Failed to ensure process.capability_id on {db_path}: {e}")
+            try:
+                cur.close()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+@app.on_event("startup")
+def _on_startup_check_db():
+    # run sync DB compatibility check
+    try:
+        _ensure_process_capability_column()
+    except Exception as e:
+        logger.warning(f"Startup DB compatibility check failed: {e}")
 
 if __name__ == "__main__":
     import uvicorn

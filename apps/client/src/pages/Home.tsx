@@ -27,6 +27,7 @@ export default function Home() {
     updateCapability,
     listProcesses,
     createProcess,
+    generateProcesses,
   } = useCapabilityApi();
 
   const loadedRef = useRef(false);
@@ -128,6 +129,7 @@ export default function Home() {
   const [processName, setProcessName] = useState('');
   const [processLevel, setProcessLevel] = useState('Level 1 - Enterprise process');
   const [processDescription, setProcessDescription] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const processLevelOptions = [
     'enterprise',
@@ -170,6 +172,55 @@ export default function Home() {
       toast.success('Successfully added Process');
     } catch (e) {
       toast.error('Failed to add process');
+    }
+  }
+
+  async function handleGenerateProcess() {
+    if (!processName.trim() || processCapId == null) return;
+    try {
+      setIsGenerating(true);
+      const result = await generateProcesses(processName.trim(), processCapId);
+
+      if (result.status === 'success') {
+        // Parse core_processes from LLM response
+        const coreProcesses = result.data?.core_processes || result.data?.['Core Processes'] || [];
+
+        // Update capabilities state to include generated core processes (nested)
+        setCapabilities((prevCaps) =>
+          prevCaps.map((c) =>
+            c.id === processCapId
+              ? {
+                  ...c,
+                  processes: coreProcesses.map((proc: any, idx: number) => ({
+                    id: idx + 10000, // temp id for frontend
+                    name: proc.name,
+                    description: proc.description,
+                    level: 'core',
+                    subprocesses: Array.isArray(proc.subprocesses)
+                      ? proc.subprocesses.map((sub: any, subIdx: number) => ({
+                          id: `${idx + 10000}-${subIdx}`,
+                          name: sub.name,
+                          lifecycle_phase: sub.lifecycle_phase,
+                        }))
+                      : [],
+                  })),
+                }
+              : c
+          )
+        );
+
+        toast.success(`Successfully generated ${coreProcesses.length} processes`);
+        setIsProcessModalOpen(false);
+        setProcessName('');
+        setProcessDescription('');
+      } else {
+        toast.error('Failed to generate processes');
+      }
+    } catch (e) {
+      toast.error('Failed to generate processes');
+      console.error(e);
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -311,41 +362,40 @@ export default function Home() {
                           ) : (
                             c.processes.map((p) => (
                               <div key={p.id} className="ml-8 bg-white border border-gray-200 rounded-md p-4 shadow-sm">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <div className="font-medium text-gray-800">{p.name}</div>
-                                      <div className="text-xs text-gray-500 mt-1">{p.level}</div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                    <button
-                                      className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100"
-                                      title="View process"
-                                      aria-label="View process"
-                                    >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="font-medium text-gray-800">{p.name}</div>
+                                    <div className="text-xs text-gray-500 mt-1">{p.level}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100" title="View process" aria-label="View process">
                                       <FiEye size={14} />
                                     </button>
-
-                                    <button
-                                      className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100"
-                                      title="Edit process"
-                                      aria-label="Edit process"
-                                    >
+                                    <button className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100" title="Edit process" aria-label="Edit process">
                                       <FiEdit2 size={14} />
                                     </button>
-
-                                    <button
-                                      className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700"
-                                      onClick={() => openProcessModal(c.id)}
-                                      title="Add subprocess"
-                                      aria-label="Add subprocess"
-                                    >
+                                    <button className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => openProcessModal(c.id)} title="Add subprocess" aria-label="Add subprocess">
                                       <FiPlus size={14} />
                                     </button>
                                   </div>
-                                  </div>
-                                  {p.description && <div className="mt-3 text-sm text-gray-600">{p.description}</div>}
                                 </div>
-                              ))
+                                {p.description && <div className="mt-3 text-sm text-gray-600">{p.description}</div>}
+                                {/* Render subprocesses nested below core process */}
+                                {Array.isArray(p.subprocesses) && p.subprocesses.length > 0 && (
+                                  <div className="ml-6 mt-3">
+                                    <div className="font-semibold text-gray-700 text-sm mb-1">Subprocesses:</div>
+                                    <ul className="space-y-2">
+                                      {p.subprocesses.map((sub) => (
+                                        <li key={sub.id} className="pl-3 border-l-2 border-blue-200">
+                                          <div className="text-gray-800 font-medium">{sub.name}</div>
+                                          <div className="text-xs text-gray-500">Phase: {sub.lifecycle_phase}</div>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            ))
                           )}
                         </div>
                       </div>
@@ -470,6 +520,15 @@ export default function Home() {
                 </button>
                 <button
                   className="px-4 py-1.5 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  onClick={handleGenerateProcess}
+                  disabled={!processName.trim() || isGenerating}
+                  title="Generate processes using AI"
+                >
+                  <FiPlus className="w-4 h-4" />
+                  {isGenerating ? 'Generating...' : 'Generate with AI'}
+                </button>
+                <button
+                  className="px-4 py-1.5 bg-green-600 text-white rounded-md font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={saveProcess}
                   disabled={!processName.trim()}
                 >

@@ -4,17 +4,27 @@ from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from typing import List, Dict, Any, Optional
 import tiktoken
-from config.env import env
+from env import env
+import json
+import re
+import ast
+try:
+    import yaml  # type: ignore
+    _has_yaml = True
+except Exception:
+    yaml = None
+    _has_yaml = False
 logger = logging.getLogger(__name__)
 
 def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-        return len(encoding.encode(text))
-    except Exception as e:
-        logger.warning(f"Failed to count tokens with tiktoken: {e}")
-        # Fallback: rough estimation (1 token ≈ 4 characters)
-        return len(text) // 4
+  try:
+    encoding = tiktoken.encoding_for_model(model)
+    return len(encoding.encode(text))
+  except Exception as e:
+    logger.warning(f"Failed to count tokens with tiktoken: {e}")
+    # Fallback: rough estimation (1 token ≈ 4 characters)
+    return len(text) // 4
+
 
 class AzureOpenAIClient:
     def __init__(self):
@@ -111,218 +121,148 @@ class AzureOpenAIClient:
         prompt: str,
         context_sections: List[str] = None,
     ) -> Dict[str, Any]:
+        # Kept for backward compatibility: small wrapper around the unified generator.
+        return await self.generate_json(prompt_text=prompt, purpose="general", context_sections=context_sections)
+
+    async def generate_processes(
+        self,
+        process_name: str,
+    ) -> Dict[str, Any]:
+        """Generate processes based on a process name using LLM"""
+        # Use the unified generator with a tight, JSON-only system prompt and a small wrapper
+        schema_example = {
+            "process_name": process_name,
+            "core_processes": [
+                {"name": "Example Core", "description": "", "subprocesses": [{"name": "Example Sub", "lifecycle_phase": "Execution"}]}
+            ]
+        }
+        prompt_text = f"Generate a JSON object with the following schema exactly (no markdown, no surrounding text):\n{json.dumps(schema_example, indent=2)}"
+        return await self.generate_json(prompt_text=prompt_text, purpose="processes", process_name=process_name)
+
+    async def generate_json(self, *, prompt_text: str, purpose: str = "general", context_sections: Optional[List[str]] = None, process_name: Optional[str] = None) -> Dict[str, Any]:
+        """Unified generator that requests strict JSON and parses robustly.
+
+        - prompt_text: final user-level prompt describing what to generate
+        - purpose: optional label (e.g., 'processes') used for logging
+        - context_sections: optional list of context snippets to include
+        """
         try:
             config = self._load_config_from_vault()
             client = self._get_client()
 
             workspace_content = ""
-
             if context_sections:
                 workspace_content += "\n=== CONTENT SECTIONS ===\n"
                 for i, section in enumerate(context_sections, 1):
                     workspace_content += f"\n{i}. {section}\n"
 
-            system_prompt = f"""
-You are an Expert SME who answers user queries about organizational capabilities, processes, and subprocesses. 
-Your task is to return responses in a structured "process-definition manner" based on the capability requested by the user. 
-The user will provide a capability name (e.g., "Program Design & Origination"), and you must return the relevant core processes and subprocesses exactly in the defined style.
+            # Strong system prompt enforcing JSON-only output with a schema example
+            system_prompt = (
+                "You are an Expert SME who answers user queries about organizational capabilities, processes, and subprocesses."
+"Your task is to return responses in a structured process-definition manner based on the capability requested by the user."
+"The user will provide a capability name (e.g., Program Design & Origination), and you must return the relevant core processes and subprocesses exactly in the defined style."
 
 ### Rules:
-- Always respond with the capability name, followed by its core processes and subprocesses.
-- Each core process must list its subprocesses and their aligned lifecycle phases.
-- Do not invent new processes or phases. Only return what exists in the knowledge base.
-- If the capability is not found, politely state: "This capability is not defined in the current framework."
-- Keep the response concise, structured, and consistent with the examples.
+"- Always respond with the capability name, followed by its core processes and subprocesses."
+"- Each core process must list its subprocesses and their aligned lifecycle phases."
+"- Do not invent new processes or phases. Only return what exists in the knowledge base."
+"- If the capability is not found, politely state: This capability is not defined in the current framework."
+"- Keep the response concise, structured, and consistent with the examples."
 
----
+            )
 
-### Few-Shot Examples
-
-#### Example 1
-**User Query:** Strategy & Resource Mobilization  
-**Assistant Response:**
-{
-  "Capability": "Strategy & Resource Mobilization",
-  "Core Processes": [
-    {
-      "Core Process": "Portfolio Strategy Definition",
-      "Subprocesses": [
-        {
-          "Subprocess": "Needs Assessment & Gap Analysis",
-          "Aligned Lifecycle Phase": "Strategy, Diagnostics, and Pipeline"
-        },
-        {
-          "Subprocess": "Funding Instrument Selection",
-          "Aligned Lifecycle Phase": "Strategy, Diagnostics, and Pipeline"
-        }
-      ]
-    },
-    {
-      "Core Process": "Donor & Fund Engagement",
-      "Subprocesses": [
-        {
-          "Subprocess": "Proposal Preparation & Submission",
-          "Aligned Lifecycle Phase": "Donor Engagement and Fundraising"
-        },
-        {
-          "Subprocess": "Grant Agreement Negotiation",
-          "Aligned Lifecycle Phase": "Donor Engagement and Fundraising"
-        },
-        {
-          "Subprocess": "Donor Visibility Planning",
-          "Aligned Lifecycle Phase": "Donor Engagement and Fundraising"
-        }
-      ]
-    }
-  ]
-}
-
----
-
-#### Example 2
-**User Query:** Program Execution & Financial Management  
-**Assistant Response:**
-{
-  "Capability": "Program Execution & Financial Management",
-  "Core Processes": [
-    {
-      "Core Process": "Funds Disbursement",
-      "Subprocesses": [
-        {
-          "Subprocess": "Milestone Verification & Approval",
-          "Aligned Lifecycle Phase": "Disbursement and Financial Management"
-        },
-        {
-          "Subprocess": "Payment Processing (FM & Tax Handling)",
-          "Aligned Lifecycle Phase": "Disbursement and Financial Management"
-        },
-        {
-          "Subprocess": "Financial Reporting & Controls",
-          "Aligned Lifecycle Phase": "Disbursement and Financial Management"
-        }
-      ]
-    },
-    {
-      "Core Process": "Implementation Oversight",
-      "Subprocesses": [
-        {
-          "Subprocess": "Technical Supervision & Monitoring",
-          "Aligned Lifecycle Phase": "Implementation Supervision and Technical Oversight"
-        },
-        {
-          "Subprocess": "Consultant & Output Management",
-          "Aligned Lifecycle Phase": "Implementation Supervision and Technical Oversight"
-        },
-        {
-          "Subprocess": "Change Request Handling",
-          "Aligned Lifecycle Phase": "Implementation Supervision and Technical Oversight"
-        }
-      ]
-    }
-  ]
-}
-
----
-
-#### Example 3
-**User Query:** Performance & Assurance  
-**Assistant Response:**
-{
-  "Capability": "Performance & Assurance",
-  "Core Processes": [
-    {
-      "Core Process": "Monitoring, Evaluation, and Learning (MEL)",
-      "Subprocesses": [
-        {
-          "Subprocess": "KPI Collection & Evidence Verification",
-          "Aligned Lifecycle Phase": "Monitoring, Evaluation, and Learning (MEL)"
-        },
-        {
-          "Subprocess": "Mid-term Completion Evaluation",
-          "Aligned Lifecycle Phase": "Monitoring, Evaluation, and Learning (MEL)"
-        },
-        {
-          "Subprocess": "Lessons Learned Capture & Publication",
-          "Aligned Lifecycle Phase": "Monitoring, Evaluation, and Learning (MEL)"
-        }
-      ]
-    },
-    {
-      "Core Process": "Audit & Compliance Management",
-      "Subprocesses": [
-        {
-          "Subprocess": "External/Internal Audit Response",
-          "Aligned Lifecycle Phase": "Audit, Compliance, and Visibility"
-        },
-        {
-          "Subprocess": "Regulatory Compliance (GDPR, Sanctions)",
-          "Aligned Lifecycle Phase": "Audit, Compliance, and Visibility"
-        },
-        {
-          "Subprocess": "Donor Reporting & Visibility Assurance",
-          "Aligned Lifecycle Phase": "Audit, Compliance, and Visibility"
-        }
-      ]
-    },
-    {
-      "Core Process": "Program Closure & Handoff",
-      "Subprocesses": [
-        {
-          "Subprocess": "Financial Decommitment & Closure",
-          "Aligned Lifecycle Phase": "Closure and Handover"
-        },
-        {
-          "Subprocess": "Document Archiving & Records Management",
-          "Aligned Lifecycle Phase": "Closure and Handover"
-        },
-        {
-          "Subprocess": "Final Handoff & Close-out Letter Issuance",
-          "Aligned Lifecycle Phase": "Closure and Handover"
-        }
-      ]
-    }
-  ]
-}
-
----
-
-### Final Instruction:
-Always return answers in this structured "process-definition manner" when the user provides a capability name.
-"""
-
-            user_message = f"{prompt}"
+            # Send request
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt_text}
+            ]
 
             response = client.chat.completions.create(
                 model=config["deployment"],
                 temperature=0.2,
-                max_tokens=600,
+                max_tokens=1500,
                 top_p=0.9,
-                frequency_penalty=0.8,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ]
+                frequency_penalty=0.5,
+                messages=messages,
             )
 
-            generated_content = response.choices[0].message.content.strip()
+            generated = response.choices[0].message.content.strip()
+            def _clean_candidate(text: str) -> str:
+                s = text
+                s = re.sub(r"```(?:json|yaml)?\n", "", s)
+                s = re.sub(r"```", "", s)
+                s = s.replace('`', '')
+                s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+                s = re.sub(r"\*([^*]+)\*", r"\1", s)
+                try:
+                    import html
+                    s = html.unescape(s)
+                except Exception:
+                    pass
+                s = re.sub(r'""\s*([^"\n\r]+?)\s*""', r'"\1"', s)
+                s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+                # Remove trailing commas in objects/arrays
+                s = re.sub(r',\s*(?=[}\]])', '', s)
+                # Ensure keys are quoted: foo: -> "foo": (only for simple unquoted keys)
+                s = re.sub(r'(?P<prefix>[{,]\s*)(?P<key>[A-Za-z0-9_\- ]+)\s*:(?!\")', lambda m: f"{m.group('prefix')}\"{m.group('key').strip()}\":", s)
+                # Normalize smart quotes to normal quotes
+                s = s.replace('\u201c', '"').replace('\u201d', '"')
+                s = s.replace('\u2018', "'").replace('\u2019', "'")
+                return s
 
-            # Calculate token counts
-            full_context = system_prompt + "\n" + user_message
-            context_tokens = count_tokens(workspace_content)
-            response_tokens = count_tokens(generated_content)
+            tried = []
+            parsed = None
 
-            logger.info(f"Context tokens: {context_tokens}, Response tokens: {response_tokens}")
+            # 1) Strict JSON
+            try:
+                parsed = json.loads(generated)
+                tried.append('json(strict)')
+            except Exception as primary_err:
+                tried.append('json(strict) failed')
 
-            return {
-                "content": generated_content,
-                "context_tokens": context_tokens,
-                "response_tokens": response_tokens,
-                "full_context": full_context,
-            }
+                # 2) Clean minimally and try json.loads
+                candidate = _clean_candidate(generated).strip()
+                try:
+                    parsed = json.loads(candidate)
+                    tried.append('json(cleaned)')
+                except Exception:
+                    tried.append('json(cleaned) failed')
+
+                # 3) YAML loader
+                if parsed is None and _has_yaml:
+                    try:
+                        parsed = yaml.safe_load(candidate)
+                        tried.append('yaml.safe_load')
+                    except Exception:
+                        tried.append('yaml failed')
+
+                # 4) ast.literal_eval fallback (convert JS literals to Python)
+                if parsed is None:
+                    try:
+                        candidate_py = candidate.replace('true', 'True').replace('false', 'False').replace('null', 'None')
+                        parsed = ast.literal_eval(candidate_py)
+                        tried.append('ast.literal_eval')
+                        # Normalize list -> wrapped dict when appropriate
+                        if isinstance(parsed, (list, tuple)):
+                            parsed = {"Core Processes": list(parsed)}
+                    except Exception as ast_err:
+                        tried.append(f'ast failed: {ast_err}')
+
+                if parsed is None:
+                    logger.error(
+                        "Failed to parse LLM response. primary_err=%s tried=%s generated_content_snippet=%s",
+                        str(primary_err), tried, generated[:2000]
+                    )
+                    raise ValueError(f"Failed to parse LLM response as JSON: {primary_err}; tried={tried}")
+
+            logger.info(f"Generated ({purpose}) for '{process_name or ''}': parsed keys={list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)}")
+
+            return {"status": "success", "data": parsed, "raw": generated, "process_name": process_name}
 
         except Exception as e:
-            logger.error(f"Error generating content with Azure OpenAI: {str(e)}")
-            raise Exception(f"Content generation failed: {str(e)}")
+            logger.error(f"Error generating JSON ({purpose}): {str(e)}")
+            raise Exception(f"Process generation failed: {str(e)}")
+
 
 azure_openai_client = AzureOpenAIClient()
 openai_client = azure_openai_client
