@@ -9,10 +9,12 @@ export type Domain = {
 };
 
 export type Process = {
-	id: number;
+	id: number | string;
 	name: string;
 	level: string;
 	description: string;
+	lifecycle_phase?: string;
+	subprocesses?: Process[];
 };
 
 export type Capability = {
