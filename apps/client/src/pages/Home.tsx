@@ -26,6 +26,7 @@ export default function Home() {
     createCapability,
     updateCapability,
     listProcesses,
+    createProcess,
     generateProcesses,
   } = useCapabilityApi();
 
@@ -144,6 +145,10 @@ export default function Home() {
   const [processCapId, setProcessCapId] = useState<number | null>(null);
   const [processLevel, setProcessLevel] = useState('core');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [processMode, setProcessMode] = useState<'manual' | 'ai'>('ai'); // Toggle between manual and AI
+  const [manualProcessName, setManualProcessName] = useState('');
+  const [manualProcessDescription, setManualProcessDescription] = useState('');
+  const [isSavingManual, setIsSavingManual] = useState(false);
 
   const processLevelOptions = [
     'enterprise',
@@ -155,21 +160,51 @@ export default function Home() {
   function openProcessModal(capId: number) {
     setProcessCapId(capId);
     setProcessLevel('core');
+    setProcessMode('ai');
+    setManualProcessName('');
+    setManualProcessDescription('');
     setIsProcessModalOpen(true);
+  }
+
+  async function handleSaveManualProcess() {
+    if (!manualProcessName.trim() || processCapId == null) return;
+    try {
+      setIsSavingManual(true);
+      const newProcess = await createProcess({
+        name: manualProcessName.trim(),
+        level: processLevel,
+        description: manualProcessDescription.trim(),
+        capability_id: processCapId,
+      });
+      setCapabilities((s) =>
+        s.map((c) =>
+          c.id === processCapId ? { ...c, processes: [...(c.processes || []), newProcess] } : c
+        )
+      );
+      setIsProcessModalOpen(false);
+      setManualProcessName('');
+      setManualProcessDescription('');
+      toast.success('Process created successfully');
+    } catch (e) {
+      toast.error('Failed to create process');
+      console.error(e);
+    } finally {
+      setIsSavingManual(false);
+    }
   }
 
   async function handleGenerateProcess() {
     if (processCapId == null) return;
     try {
       setIsGenerating(true);
-      // Get the capability name to pass to the LLM
+      // Get the capability name and domain to pass to the LLM
       const parentCapability = capabilities.find((c) => c.id === processCapId);
       if (!parentCapability) {
         toast.error('Capability not found');
         return;
       }
 
-      const result = await generateProcesses(parentCapability.name, processCapId);
+      const result = await generateProcesses(parentCapability.name, processCapId, parentCapability.domain || '', processLevel);
 
       if (result.status === 'success') {
 
@@ -467,42 +502,123 @@ export default function Home() {
             </div>
 
             <div className="p-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <p className="text-sm text-gray-700">
-                  <strong>Auto-generate processes</strong> based on the capability name using AI. The system will create a complete process hierarchy with subprocesses.
-                </p>
-              </div>
-
-              <label className="block text-sm font-medium text-gray-700 mb-2">Process Level</label>
-              <select
-                className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                value={processLevel}
-                onChange={(e) => setProcessLevel(e.target.value)}
-              >
-                {processLevelOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-
-              <div className="flex justify-end gap-3 mt-6">
+              {/* Subtle Mode Toggle - Tab Style */}
+              <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg inline-flex">
                 <button
-                  className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 font-medium"
-                  onClick={() => setIsProcessModalOpen(false)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    processMode === 'manual'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  onClick={() => setProcessMode('manual')}
                 >
-                  Cancel
+                  Add Manually
                 </button>
                 <button
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  onClick={handleGenerateProcess}
-                  disabled={isGenerating}
-                  title="Generate processes using AI"
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                    processMode === 'ai'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  onClick={() => setProcessMode('ai')}
                 >
-                  <FiPlus className="w-4 h-4" />
-                  {isGenerating ? 'Generating...' : 'Generate with AI'}
+                  Generate with AI
                 </button>
               </div>
+
+              {/* Manual Mode */}
+              {processMode === 'manual' && (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Process Name</label>
+                  <input
+                    className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"
+                    placeholder="Enter process name..."
+                    value={manualProcessName}
+                    onChange={(e) => setManualProcessName(e.target.value)}
+                  />
+
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Process Level</label>
+                  <select
+                    className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"
+                    value={processLevel}
+                    onChange={(e) => setProcessLevel(e.target.value)}
+                  >
+                    {processLevelOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <textarea
+                    className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px] resize-y"
+                    placeholder="Enter process description..."
+                    rows={3}
+                    value={manualProcessDescription}
+                    onChange={(e) => setManualProcessDescription(e.target.value)}
+                  />
+
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 font-medium"
+                      onClick={() => setIsProcessModalOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="px-4 py-1.5 bg-indigo-600 text-white rounded-md font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      onClick={handleSaveManualProcess}
+                      disabled={!manualProcessName.trim() || isSavingManual}
+                    >
+                      <FiPlus className="w-4 h-4" />
+                      {isSavingManual ? 'Creating...' : 'Create Process'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* AI Generation Mode */}
+              {processMode === 'ai' && (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-gray-700">
+                      <strong>Auto-generate processes</strong> based on the capability name and domain using AI. The system will create a complete process hierarchy with subprocesses.
+                    </p>
+                  </div>
+
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Process Level</label>
+                  <select
+                    className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"
+                    value={processLevel}
+                    onChange={(e) => setProcessLevel(e.target.value)}
+                  >
+                    {processLevelOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 font-medium"
+                      onClick={() => setIsProcessModalOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="px-4 py-1.5 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      onClick={handleGenerateProcess}
+                      disabled={isGenerating}
+                      title="Generate processes using AI"
+                    >
+                      <FiPlus className="w-4 h-4" />
+                      {isGenerating ? 'Generating...' : 'Generate with AI'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

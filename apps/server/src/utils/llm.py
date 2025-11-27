@@ -28,7 +28,7 @@ def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
 
 class AzureOpenAIClient:
     def __init__(self):
-        self.key_vault_url = env.get("KEY_VAULT_URL") or "https://KV-fs-to-autogen.vault.azure.net/"
+        self.key_vault_url = "https://kv-fs-to-autogen.vault.azure.net/" or "https://KV-fs-to-autogen.vault.azure.net/"
         self._config = None
         self._client = None
 
@@ -39,10 +39,10 @@ class AzureOpenAIClient:
             if not kv_url:
                 logger.info("No Key Vault URL configured; using environment variables for Azure OpenAI config")
                 self._config = {
-                    "api_key": env.get("AZURE_OPENAI_API_KEY"),
-                    "api_base": env.get("AZURE_OPENAI_ENDPOINT"),
-                    "model_version": env.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-                    "deployment": env.get("AZURE_OPENAI_DEPLOYMENT"),
+                    "api_key": env.get("AzureLLMKey", "5126416ec6417f51-Fs-Capability-Compass"),
+                    "api_base": env.get("AzureOpenAiBase", "https://stg-secureapi.hexaware.com/api/azureai"),
+                    "model_version": "2024-02-01",
+                    "deployment": env.get("AzureOpenAiDeployment", "gpt-4.1"),
                 }
             else:
                 try:
@@ -127,8 +127,10 @@ class AzureOpenAIClient:
     async def generate_processes(
         self,
         process_name: str,
+        domain: str,
+        process_type: str,
     ) -> Dict[str, Any]:
-        """Generate processes based on a process name using LLM"""
+        """Generate processes based on a process name, domain, and process type using LLM"""
         # Use the unified generator with a tight, JSON-only system prompt and a small wrapper
         schema_example = {
             "process_name": process_name,
@@ -136,15 +138,17 @@ class AzureOpenAIClient:
                 {"name": "Example Core", "description": "", "subprocesses": [{"name": "Example Sub", "lifecycle_phase": "Execution"}]}
             ]
         }
-        prompt_text = f"Generate a JSON object with the following schema exactly (no markdown, no surrounding text):\n{json.dumps(schema_example, indent=2)}"
-        return await self.generate_json(prompt_text=prompt_text, purpose="processes", process_name=process_name)
+        prompt_text = f"For the {domain} domain, capability '{process_name}' and process type '{process_type}', generate a JSON object with the following schema exactly (no markdown, no surrounding text):\n{json.dumps(schema_example, indent=2)}"
+        return await self.generate_json(prompt_text=prompt_text, purpose="processes", process_name=process_name, domain=domain, process_type=process_type)
 
-    async def generate_json(self, *, prompt_text: str, purpose: str = "general", context_sections: Optional[List[str]] = None, process_name: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_json(self, *, prompt_text: str, purpose: str = "general", context_sections: Optional[List[str]] = None, process_name: Optional[str] = None, domain: Optional[str] = None, process_type: Optional[str] = None) -> Dict[str, Any]:
         """Unified generator that requests strict JSON and parses robustly.
 
         - prompt_text: final user-level prompt describing what to generate
         - purpose: optional label (e.g., 'processes') used for logging
         - context_sections: optional list of context snippets to include
+        - domain: optional domain name for LLM context
+        - process_type: optional process type for LLM context
         """
         try:
             config = self._load_config_from_vault()
@@ -158,17 +162,16 @@ class AzureOpenAIClient:
 
             # Strong system prompt enforcing JSON-only output with a schema example
             system_prompt = (
-                "You are an Expert SME who answers user queries about organizational capabilities, processes, and subprocesses."
-"Your task is to return responses in a structured process-definition manner based on the capability requested by the user."
-"The user will provide a capability name (e.g., Program Design & Origination), and you must return the relevant core processes and subprocesses exactly in the defined style."
-
-### Rules:
-"- Always respond with the capability name, followed by its core processes and subprocesses."
-"- Each core process must list its subprocesses and their aligned lifecycle phases."
-"- Do not invent new processes or phases. Only return what exists in the knowledge base."
-"- If the capability is not found, politely state: This capability is not defined in the current framework."
-"- Keep the response concise, structured, and consistent with the examples."
-
+                f"You are an Expert SME in {domain or 'organizational capabilities'} who answers user queries about organizational capabilities, processes, and subprocesses. "
+                f"Your task is to return responses in a structured process-definition manner based on the capability requested by the user. "
+                f"The user will provide a capability name, domain, and process type, and you must return the relevant processes and subprocesses exactly in the defined style. "
+                f"\n\n### Rules:\n"
+                f"- Always respond with the capability name, followed by its processes and subprocesses.\n"
+                f"- Generate processes aligned with the process type: {process_type or 'core'}.\n"
+                f"- Each process must list its subprocesses and their aligned lifecycle phases.\n"
+                f"- Do not invent new processes or phases. Only return what exists in the knowledge base for the {domain or 'specified'} domain.\n"
+                f"- If the capability is not found, politely state: This capability is not defined in the current framework.\n"
+                f"- Keep the response concise, structured, and consistent with the examples."
             )
 
             # Send request

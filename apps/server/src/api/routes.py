@@ -1,4 +1,5 @@
 import logging
+import re
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -184,22 +185,24 @@ async def delete_process(process_id: int):
 class GenerateProcessRequest(BaseModel):
     process_name: str
     capability_id: int
+    domain: str
+    process_type: str
 
 
 @router.post("/processes/generate")
 async def generate_processes(payload: GenerateProcessRequest):
     """Generate processes using LLM and save them to the database"""
     try:
-        logger.info(f"/processes/generate called with payload: process_name={payload.process_name}, capability_id={payload.capability_id}")
+        logger.info(f"/processes/generate called with payload: process_name={payload.process_name}, capability_id={payload.capability_id}, domain={payload.domain}, process_type={payload.process_type}")
         # Call the LLM to generate processes
         logger.info("Calling azure_openai_client.generate_processes...")
-        print(f"[DEBUG] /processes/generate payload: process_name={payload.process_name}, capability_id={payload.capability_id}")
+        print(f"[DEBUG] /processes/generate payload: process_name={payload.process_name}, capability_id={payload.capability_id}, domain={payload.domain}, process_type={payload.process_type}")
         try:
-            llm_result = await azure_openai_client.generate_processes(payload.process_name)
+            llm_result = await azure_openai_client.generate_processes(payload.process_name, payload.domain, payload.process_type)
             logger.info(f"LLM returned: {llm_result}")
             print(f"[DEBUG] LLM returned: {llm_result}")
         except Exception as e:
-            # Log and surface LLM errors so they're visible in server logs/response
+
             logger.exception("LLM call failed")
             print(f"[DEBUG] LLM call failed: {e}")
             raise HTTPException(status_code=500, detail=f"LLM call failed: {str(e)}")
