@@ -261,22 +261,23 @@ async def generate_processes(payload: GenerateProcessRequest):
         # Create processes in the database
         created_processes = []
         for core_proc in core_processes:
-            # Create the core process
+            # Create the top-level process using the requested process_type
+            top_level = payload.process_type or "core"
             core_proc_obj = await process_repository.create_process(
                 name=core_proc.get("name", ""),
-                level="core",
+                level=top_level,
                 description=core_proc.get("description", ""),
                 capability_id=payload.capability_id,
             )
-            
+
             created_processes.append({
                 "id": core_proc_obj.id,
                 "name": core_proc_obj.name,
                 "level": core_proc_obj.level,
                 "description": core_proc_obj.description,
             })
-            
-            # Create subprocesses
+
+            # Create subprocesses; subprocesses remain at 'subprocess' level
             subprocesses = core_proc.get("subprocesses", [])
             for subprocess in subprocesses:
                 subprocess_obj = await process_repository.create_process(
@@ -288,8 +289,9 @@ async def generate_processes(payload: GenerateProcessRequest):
         
         return {
             "status": "success",
-            "message": f"Successfully generated and saved {len(core_processes)} core processes",
+            "message": f"Successfully generated and saved {len(core_processes)} {payload.process_type or 'core'} processes",
             "processes": created_processes,
+            "process_type": payload.process_type or 'core',
         }
     
     except HTTPException:

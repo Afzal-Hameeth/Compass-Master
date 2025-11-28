@@ -173,21 +173,21 @@ class AzureOpenAIClient:
                 ]
             }
 
-            # Strong system prompt enforcing JSON-only output with clear context
+
             system_prompt = (
                 f"You are an Expert SME in {domain or 'organizational capabilities'} who generates structured process definitions for enterprise capabilities. "
                 f"\n\n## Task:\n"
                 f"Generate a list of {process_type or 'core'}-level processes for the capability '{capability_name}' within the {domain or 'specified'} domain. "
                 f"\n\n## Requirements:\n"
-                f"- Generate ONLY {process_type or 'core'}-level processes relevant to this capability in this domain\n"
-                f"- Each process must have a name, description, and list of subprocesses\n"
+                f"- Generate ONLY two {process_type or 'core'}-level processes relevant to this capability in this domain\n"
+                f"- Each process must have a name, description, and list of two subprocesses\n"
                 f"- Each subprocess must have a name and description about the subprocess\n"
                 f"- Return data as valid JSON matching the provided schema {schema_example}\n"
                 f"- Do not invent processes; base them on standard industry practices for {capability_name} in {domain}\n"
                 f"- If the capability-domain combination is not recognized, return: {{'error': 'Capability not found for this domain'}}"
             )
 
-            # Send request
+
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt_text}
@@ -206,20 +206,19 @@ class AzureOpenAIClient:
             logger.debug(f"Raw LLM response (first 2000 chars):\n{generated[:2000]}")
             def _clean_candidate(text: str) -> str:
                 s = text
-                # Remove markdown code blocks
+
                 s = re.sub(r"```(?:json|yaml)?\n", "", s)
                 s = re.sub(r"```", "", s)
                 s = s.replace('`', '')
-                # Remove markdown bold/italic
+
                 s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
                 s = re.sub(r"\*([^*]+)\*", r"\1", s)
-                # Remove any leading/trailing text before/after JSON
-                # Look for first { or [ and last } or ]
+
                 match = re.search(r'[{\[]', s)
                 if match:
                     start = match.start()
                     s = s[start:]
-                # Unescape HTML entities
+
                 try:
                     import html
                     s = html.unescape(s)

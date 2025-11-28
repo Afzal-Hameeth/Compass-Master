@@ -150,7 +150,7 @@ export default function Home() {
 
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [processCapId, setProcessCapId] = useState<number | null>(null);
-  const [processLevel, setProcessLevel] = useState('core');
+  const [processLevel, setProcessLevel] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [processMode, setProcessMode] = useState<'manual' | 'ai'>('ai'); // Toggle between manual and AI
   const [manualProcessName, setManualProcessName] = useState('');
@@ -257,7 +257,7 @@ export default function Home() {
                           id: proc.id ?? idx + 10000,
                           name: proc.name,
                           description: proc.description,
-                          level: proc.level || 'core',
+                          level: proc.level || processLevel,
                           subprocesses: Array.isArray(proc.subprocesses)
                             ? proc.subprocesses.map((sub: any, subIdx: number) => ({
                                 id: sub.id ?? `${idx + 10000}-${subIdx}`,
@@ -282,22 +282,22 @@ export default function Home() {
           setCapabilities((prevCaps) =>
             prevCaps.map((c) =>
               c.id === processCapId
-                ? {
-                    ...c,
-                    processes: coreProcesses.map((proc: any, idx: number) => ({
-                      id: idx + 10000,
-                      name: proc.name,
-                      description: proc.description,
-                      level: 'core',
-                      subprocesses: Array.isArray(proc.subprocesses)
-                        ? proc.subprocesses.map((sub: any, subIdx: number) => ({
-                            id: `${idx + 10000}-${subIdx}`,
-                            name: sub.name,
-                            lifecycle_phase: sub.lifecycle_phase,
-                          }))
-                        : [],
-                    })),
-                  }
+                    ? {
+                        ...c,
+                        processes: coreProcesses.map((proc: any, idx: number) => ({
+                          id: idx + 10000,
+                          name: proc.name,
+                          description: proc.description,
+                          level: processLevel || 'core',
+                          subprocesses: Array.isArray(proc.subprocesses)
+                            ? proc.subprocesses.map((sub: any, subIdx: number) => ({
+                                id: `${idx + 10000}-${subIdx}`,
+                                name: sub.name,
+                                lifecycle_phase: sub.lifecycle_phase,
+                              }))
+                            : [],
+                        })),
+                      }
                 : c
             )
           );
