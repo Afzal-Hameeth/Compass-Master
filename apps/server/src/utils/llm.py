@@ -126,27 +126,30 @@ class AzureOpenAIClient:
 
     async def generate_processes(
         self,
-        process_name: str,
+        capability_name: str,
         domain: str,
         process_type: str,
     ) -> Dict[str, Any]:
-        """Generate processes based on a process name, domain, and process type using LLM"""
-        # Use the unified generator with a tight, JSON-only system prompt and a small wrapper
+        """Generate processes for a capability in a specific domain with a given process type using LLM"""
+        # Use the unified generator with a tight, JSON-only system prompt
         schema_example = {
-            "process_name": process_name,
-            "core_processes": [
-                {"name": "Example Core", "description": "", "subprocesses": [{"name": "Example Sub", "lifecycle_phase": "Execution"}]}
+            "capability_name": capability_name,
+            "domain": domain,
+            "process_type": process_type,
+            "processes": [
+                {"name": "Example Process", "description": "", "subprocesses": [{"name": "Example Sub", "description": ""}]}
             ]
         }
-        prompt_text = f"For the {domain} domain, capability '{process_name}' and process type '{process_type}', generate a JSON object with the following schema exactly (no markdown, no surrounding text):\n{json.dumps(schema_example, indent=2)}"
-        return await self.generate_json(prompt_text=prompt_text, purpose="processes", process_name=process_name, domain=domain, process_type=process_type)
+        prompt_text = f"For the capability '{capability_name}' in the {domain} domain, generate a list of {process_type}-level processes with their subprocesses. Return the result as a JSON object with the following schema (no markdown, no surrounding text):\n{json.dumps(schema_example, indent=2)}"
+        return await self.generate_json(prompt_text=prompt_text, purpose="processes", capability_name=capability_name, domain=domain, process_type=process_type)
 
-    async def generate_json(self, *, prompt_text: str, purpose: str = "general", context_sections: Optional[List[str]] = None, process_name: Optional[str] = None, domain: Optional[str] = None, process_type: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_json(self, *, prompt_text: str, purpose: str = "general", context_sections: Optional[List[str]] = None, capability_name: Optional[str] = None, domain: Optional[str] = None, process_type: Optional[str] = None) -> Dict[str, Any]:
         """Unified generator that requests strict JSON and parses robustly.
 
         - prompt_text: final user-level prompt describing what to generate
         - purpose: optional label (e.g., 'processes') used for logging
         - context_sections: optional list of context snippets to include
+        - capability_name: optional capability name for LLM context
         - domain: optional domain name for LLM context
         - process_type: optional process type for LLM context
         """
@@ -160,18 +163,28 @@ class AzureOpenAIClient:
                 for i, section in enumerate(context_sections, 1):
                     workspace_content += f"\n{i}. {section}\n"
 
-            # Strong system prompt enforcing JSON-only output with a schema example
+            schema_example = {
+                "capability_name": capability_name,
+                "domain": domain,
+                "process_type": process_type,
+                "processes": [
+                    {"name": "Example Process", "description": "",
+                     "subprocesses": [{"name": "Example Sub", "description": ""}]}
+                ]
+            }
+
+            # Strong system prompt enforcing JSON-only output with clear context
             system_prompt = (
-                f"You are an Expert SME in {domain or 'organizational capabilities'} who answers user queries about organizational capabilities, processes, and subprocesses. "
-                f"Your task is to return responses in a structured process-definition manner based on the capability requested by the user. "
-                f"The user will provide a capability name, domain, and process type, and you must return the relevant processes and subprocesses exactly in the defined style. "
-                f"\n\n### Rules:\n"
-                f"- Always respond with the capability name, followed by its processes and subprocesses.\n"
-                f"- Generate processes aligned with the process type: {process_type or 'core'}.\n"
-                f"- Each process must list its subprocesses and their aligned lifecycle phases.\n"
-                f"- Do not invent new processes or phases. Only return what exists in the knowledge base for the {domain or 'specified'} domain.\n"
-                f"- If the capability is not found, politely state: This capability is not defined in the current framework.\n"
-                f"- Keep the response concise, structured, and consistent with the examples."
+                f"You are an Expert SME in {domain or 'organizational capabilities'} who generates structured process definitions for enterprise capabilities. "
+                f"\n\n## Task:\n"
+                f"Generate a list of {process_type or 'core'}-level processes for the capability '{capability_name}' within the {domain or 'specified'} domain. "
+                f"\n\n## Requirements:\n"
+                f"- Generate ONLY {process_type or 'core'}-level processes relevant to this capability in this domain\n"
+                f"- Each process must have a name, description, and list of subprocesses\n"
+                f"- Each subprocess must have a name and description about the subprocess\n"
+                f"- Return data as valid JSON matching the provided schema {schema_example}\n"
+                f"- Do not invent processes; base them on standard industry practices for {capability_name} in {domain}\n"
+                f"- If the capability-domain combination is not recognized, return: {{'error': 'Capability not found for this domain'}}"
             )
 
             # Send request
@@ -190,27 +203,64 @@ class AzureOpenAIClient:
             )
 
             generated = response.choices[0].message.content.strip()
+            logger.debug(f"Raw LLM response (first 2000 chars):\n{generated[:2000]}")
             def _clean_candidate(text: str) -> str:
                 s = text
+                # Remove markdown code blocks
                 s = re.sub(r"```(?:json|yaml)?\n", "", s)
                 s = re.sub(r"```", "", s)
                 s = s.replace('`', '')
+                # Remove markdown bold/italic
                 s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
                 s = re.sub(r"\*([^*]+)\*", r"\1", s)
+                # Remove any leading/trailing text before/after JSON
+                # Look for first { or [ and last } or ]
+                match = re.search(r'[{\[]', s)
+                if match:
+                    start = match.start()
+                    s = s[start:]
+                # Unescape HTML entities
                 try:
                     import html
                     s = html.unescape(s)
                 except Exception:
                     pass
-                s = re.sub(r'""\s*([^"\n\r]+?)\s*""', r'"\1"', s)
+                # CRITICAL: Fix double-escaped quotes FIRST: ""key"" -> "key"
+                s = re.sub(r'""([^"]*?)""', r'"\1"', s)
+                # Normalize all types of quotes to double quotes
+                s = s.replace('\u201c', '"').replace('\u201d', '"')  # Smart double quotes
+                s = s.replace('\u2018', '"').replace('\u2019', '"')  # Smart single quotes
+                s = s.replace('\u201e', '"').replace('\u201f', '"')  # Double low-9 quotes
+                s = s.replace('\u2039', '"').replace('\u203a', '"')  # Guillemets
+                s = s.replace('«', '"').replace('»', '"')  # French quotes
+                # Remove control characters early
                 s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+                # Convert remaining single quotes to double quotes
+                s = s.replace("'", '"')
+                # Fix escaped quotes
+                s = s.replace('\\"', '"')
+                # Fix double double quotes (again, in case of complex patterns)
+                s = re.sub(r'""\s*([^"\n\r]+?)\s*""', r'"\1"', s)
                 # Remove trailing commas in objects/arrays
                 s = re.sub(r',\s*(?=[}\]])', '', s)
-                # Ensure keys are quoted: foo: -> "foo": (only for simple unquoted keys)
-                s = re.sub(r'(?P<prefix>[{,]\s*)(?P<key>[A-Za-z0-9_\- ]+)\s*:(?!\")', lambda m: f"{m.group('prefix')}\"{m.group('key').strip()}\":", s)
-                # Normalize smart quotes to normal quotes
-                s = s.replace('\u201c', '"').replace('\u201d', '"')
-                s = s.replace('\u2018', "'").replace('\u2019', "'")
+                # Fix missing colons after quoted keys: "key" {value -> "key": {value
+                s = re.sub(r'"([^"]+)"\s*([{[])', r'"\1": \2', s)
+                # Fix missing colons: "key" "value" -> "key": "value"
+                s = re.sub(r'"([^"]+)"\s+"', r'"\1": "', s)
+                # Fix unquoted string values (simple heuristic)
+                s = re.sub(r': ([A-Za-z][A-Za-z0-9\s&\-]*?)([,}])', r': "\1"\2', s)
+                # Handle truncated strings: close any unclosed quoted string at the end
+                if s.rstrip().endswith('"') is False and s.rstrip()[-1] not in '}]':
+                    # Find the last unclosed quote
+                    last_quote = s.rfind('"')
+                    if last_quote != -1:
+                        after_quote = s[last_quote+1:].rstrip()
+                        if after_quote and not after_quote.startswith(','):
+                            s = s[:last_quote+1] + after_quote.rstrip(',') + '"'
+                # Fix incomplete JSON by closing unclosed structures
+                open_braces = s.count('{') - s.count('}')
+                open_brackets = s.count('[') - s.count(']')
+                s = s.rstrip(',').rstrip() + '}' * open_braces + ']' * open_brackets
                 return s
 
             tried = []
@@ -225,11 +275,13 @@ class AzureOpenAIClient:
 
                 # 2) Clean minimally and try json.loads
                 candidate = _clean_candidate(generated).strip()
+                logger.debug(f"Cleaned candidate (first 2000 chars):\n{candidate[:2000]}")
                 try:
                     parsed = json.loads(candidate)
                     tried.append('json(cleaned)')
-                except Exception:
-                    tried.append('json(cleaned) failed')
+                except Exception as clean_err:
+                    tried.append(f'json(cleaned) failed: {str(clean_err)[:100]}')
+                    logger.debug(f"Clean parse failed: {clean_err}")
 
                 # 3) YAML loader
                 if parsed is None and _has_yaml:
@@ -258,9 +310,9 @@ class AzureOpenAIClient:
                     )
                     raise ValueError(f"Failed to parse LLM response as JSON: {primary_err}; tried={tried}")
 
-            logger.info(f"Generated ({purpose}) for '{process_name or ''}': parsed keys={list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)}")
+            logger.info(f"Generated ({purpose}) for capability '{capability_name or ''}' in domain '{domain or ''}': parsed keys={list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)}")
 
-            return {"status": "success", "data": parsed, "raw": generated, "process_name": process_name}
+            return {"status": "success", "data": parsed, "raw": generated, "capability_name": capability_name}
 
         except Exception as e:
             logger.error(f"Error generating JSON ({purpose}): {str(e)}")

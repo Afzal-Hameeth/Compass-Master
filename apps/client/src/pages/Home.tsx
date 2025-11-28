@@ -522,7 +522,7 @@ export default function Home() {
                                     <div className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700">{p.level}</div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <button className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100" title="View process" aria-label="View process">
+                                   {/* <button className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100" title="View process" aria-label="View process">
                                       <FiEye size={14} />
                                     </button>
                                     <button className="w-8 h-8 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100" title="Edit process" aria-label="Edit process">
@@ -530,7 +530,7 @@ export default function Home() {
                                     </button>
                                     <button className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => openProcessModal(c.id)} title="Add subprocess" aria-label="Add subprocess">
                                       <FiPlus size={14} />
-                                    </button>
+                                    </button> */}
                                     <button className="w-8 h-8 flex items-center justify-center rounded-md text-red-600 hover:bg-red-50" title="Delete process" aria-label="Delete process" onClick={() => handleDeleteProcess(p.id, c.id)}>
                                       <FiTrash2 size={14} />
                                     </button>

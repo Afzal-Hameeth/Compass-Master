@@ -130,12 +130,12 @@ export function useCapabilityApi() {
 		await fetcher(`${BASE_URL}/processes/${id}`, { method: 'DELETE' });
 	}, []);
 
-	const generateProcesses = useCallback(async (processName: string, capabilityId: number, domain: string, processType: string) => {
+	const generateProcesses = useCallback(async (capabilityName: string, capabilityId: number, domain: string, processType: string) => {
 		const res = await fetcher<any>(`${BASE_URL}/processes/generate`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				process_name: processName,
+				capability_name: capabilityName,
 				capability_id: capabilityId,
 				domain: domain,
 				process_type: processType,
