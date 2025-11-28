@@ -1,5 +1,6 @@
 import logging
 import re
+logging.basicConfig(level=logging.INFO)
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,7 +12,54 @@ from database.models import Capability as CapabilityModel, Process as ProcessMod
 from utils.llm import azure_openai_client
 
 router = APIRouter()
+import logging
 logger = logging.getLogger(__name__)
+class ResearchRequest(BaseModel):
+    query: str
+
+@router.post("/capabilities/research")
+async def research_capabilities(payload: ResearchRequest):
+    """
+    Analyze user query using LLM and return relevant capabilities.
+    """
+    query = payload.query
+    # Fetch all capabilities
+    capabilities = await capability_repository.fetch_all_capabilities()
+    capability_names = [c.name for c in capabilities]
+
+    logger.info(f"[Research] User query: {query}")
+    logger.info(f"[Research] Capability names: {capability_names}")
+
+    # Use LLM to analyze query and match capabilities
+    llm_result = await azure_openai_client.generate_content(
+        prompt=f"Given the following capabilities: {capability_names}. Which are most relevant to the user query: '{query}'? Return a JSON object with a 'capabilities' key containing a list of relevant capability names."
+    )
+    logger.info(f"[Research] LLM raw result: {llm_result}")
+
+    # Extract relevant names from llm_result['data']['capabilities']
+    relevant_names = []
+    if isinstance(llm_result, dict):
+        data = llm_result.get("data", {})
+        if isinstance(data, dict):
+            relevant_names = data.get("capabilities", [])
+        elif isinstance(data, list):
+            relevant_names = data
+    logger.info(f"[Research] Relevant capability names from LLM: {relevant_names}")
+
+    relevant_caps = [c for c in capabilities if c.name in relevant_names]
+    logger.info(f"[Research] Matched capabilities: {[c.name for c in relevant_caps]}")
+
+    result = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "description": c.description,
+            "domain": c.domain.name if getattr(c, 'domain', None) else None,
+        }
+        for c in relevant_caps
+    ]
+    logger.info(f"[Research] Response payload: {result}")
+    return JSONResponse(result)
 
 
 Domain_Pydantic = pydantic_model_creator(DomainModel, name="Domain")
