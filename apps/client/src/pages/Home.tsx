@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { FiEye, FiEdit2, FiEdit3, FiPlus, FiChevronRight, FiChevronDown, FiLayers, } from 'react-icons/fi'
+import { FiEye, FiEdit2, FiEdit3, FiPlus, FiChevronRight, FiChevronDown, FiLayers, FiTrash2 } from 'react-icons/fi'
 import { Toaster, toast } from 'react-hot-toast'
 
 
@@ -27,6 +27,8 @@ export default function Home() {
     updateCapability,
     listProcesses,
     createProcess,
+    deleteProcess,
+    deleteCapability,
     generateProcesses,
   } = useCapabilityApi();
 
@@ -247,6 +249,56 @@ export default function Home() {
     }
   }
 
+  async function handleDeleteProcess(processId: number | string, capId: number, parentProcessId?: number | string) {
+    const ok = window.confirm('Are you sure you want to delete this process? This cannot be undone.');
+    if (!ok) return;
+    try {
+      // If it's a persisted process (numeric id) call backend
+      if (typeof processId === 'number') {
+        await deleteProcess(processId);
+      }
+
+      // Remove from local state (works for both persisted and temp frontend-only entries)
+      setCapabilities((prev) =>
+        prev.map((c) => {
+          if (c.id !== capId) return c;
+          const processes = (c.processes || []).map((p: any) => ({ ...p }));
+          if (parentProcessId == null) {
+            // deleting a top-level process
+            return { ...c, processes: processes.filter((p: any) => String(p.id) !== String(processId)) };
+          }
+          // deleting a subprocess
+          return {
+            ...c,
+            processes: processes.map((p: any) => {
+              if (String(p.id) !== String(parentProcessId)) return p;
+              const subs = Array.isArray(p.subprocesses) ? p.subprocesses.filter((s: any) => String(s.id) !== String(processId)) : [];
+              return { ...p, subprocesses: subs };
+            }),
+          };
+        })
+      );
+
+      toast.success('Process deleted');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to delete process');
+    }
+  }
+
+  async function handleDeleteCapability(capId: number) {
+    const ok = window.confirm('Delete this capability and all its processes? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await deleteCapability(capId);
+      setCapabilities((prev) => prev.filter((c) => c.id !== capId));
+      toast.success('Capability deleted');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to delete capability');
+    }
+  }
+
 
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
 
@@ -376,6 +428,15 @@ export default function Home() {
                         >
                           <FiPlus size={16} />
                         </button>
+
+                        <button
+                          className="w-9 h-9 flex items-center justify-center rounded-md text-red-600 hover:bg-red-50"
+                          onClick={() => handleDeleteCapability(c.id)}
+                          title="Delete capability"
+                          aria-label="Delete capability"
+                        >
+                          <FiTrash2 size={16} />
+                        </button>
                       </div>
                     </div>
 
@@ -403,6 +464,9 @@ export default function Home() {
                                     <button className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => openProcessModal(c.id)} title="Add subprocess" aria-label="Add subprocess">
                                       <FiPlus size={14} />
                                     </button>
+                                    <button className="w-8 h-8 flex items-center justify-center rounded-md text-red-600 hover:bg-red-50" title="Delete process" aria-label="Delete process" onClick={() => handleDeleteProcess(p.id, c.id)}>
+                                      <FiTrash2 size={14} />
+                                    </button>
                                   </div>
                                 </div>
                                 {p.description && <div className="mt-3 text-sm text-gray-600">{p.description}</div>}
@@ -413,8 +477,17 @@ export default function Home() {
                                     <ul className="space-y-2">
                                       {(p as any).subprocesses.map((sub: any) => (
                                         <li key={sub.id} className="pl-3 border-l-2 border-blue-200">
-                                          <div className="text-gray-800 font-medium">{sub.name}</div>
-                                          <div className="text-xs text-gray-500">Phase: {sub.lifecycle_phase}</div>
+                                              <div className="flex items-center justify-between">
+                                                <div>
+                                                  <div className="text-gray-800 font-medium">{sub.name}</div>
+                                                  <div className="text-xs text-gray-500">Phase: {sub.lifecycle_phase}</div>
+                                                </div>
+                                                <div>
+                                                  <button className="text-red-600 p-1 rounded hover:bg-red-50" title="Delete subprocess" onClick={() => handleDeleteProcess(sub.id, c.id, p.id)}>
+                                                    <FiTrash2 size={14} />
+                                                  </button>
+                                                </div>
+                                              </div>
                                         </li>
                                       ))}
                                     </ul>
@@ -503,7 +576,7 @@ export default function Home() {
 
             <div className="p-6">
               {/* Subtle Mode Toggle - Tab Style */}
-              <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg inline-flex">
+              <div className="inline-flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg">
                 <button
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                     processMode === 'manual'
