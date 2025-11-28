@@ -8,8 +8,8 @@ const Sidebar: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
 
   const navItems = [
-    { label: 'Dashboard', path: '/dashboard', icon: FiHome },
-    { label: 'Capabilities', path: '/dashboard/capabilities', icon: FiLayers },
+    { label: 'Capability Master', path: '/dashboard', icon: FiHome },
+    { label: 'Research Agent', path: '/dashboard/research-agent', icon: FiLayers },
   ];
 
   return (

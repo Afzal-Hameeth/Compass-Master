@@ -6,6 +6,7 @@ import Hero from './pages/Hero';
 import DashLayout from './layouts/DashLayout';
 import CompassMaster from './pages/compassMaster';
 import Error from './pages/Error';
+import ResearchAgent from './pages/researchAgent';
 
 const router = createBrowserRouter([
   {
@@ -26,6 +27,11 @@ const router = createBrowserRouter([
       {
         path: 'capabilities',
         element: <CompassMaster />,
+        errorElement: <Error />,
+      },
+      {
+        path: 'research-agent',
+        element: <ResearchAgent />,
         errorElement: <Error />,
       },
     ],
