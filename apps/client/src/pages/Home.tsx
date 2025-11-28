@@ -121,8 +121,13 @@ export default function Home() {
           name: formName,
           description: formDescription,
         });
+        // Ensure the UI shows the domain name immediately without a full refresh.
+        // The API may return the created capability with a domain_id or without a resolved domain name,
+        // so prefer any domain value from the response, otherwise lookup from `domains` state.
+        const domainName =
+          (newCap as any).domain || domains.find((d) => String(d.id) === String(selectedDomain))?.name || selectedDomain;
         setCapabilities((s) => [
-          { ...newCap, processes: [] },
+          { ...newCap, domain: domainName, processes: [] },
           ...s,
         ]);
         toast.success('Successfully added capability');
@@ -209,34 +214,96 @@ export default function Home() {
       const result = await generateProcesses(parentCapability.name, processCapId, parentCapability.domain || '', processLevel);
 
       if (result.status === 'success') {
+        // If backend returned created DB processes, try to refresh from server to show persisted entries.
+        // There may be a short eventual-consistency delay on the server; retry a few times before falling back to the LLM preview.
+        const created = result.processes || [];
+        const coreFromLLM = result.data?.core_processes || result.data?.['Core Processes'] || [];
 
-        const coreProcesses = result.data?.core_processes || result.data?.['Core Processes'] || [];
+        async function fetchProcessesForCapWithRetry(capId: number, attempts = 5, delayMs = 300) {
+          for (let i = 0; i < attempts; i++) {
+            try {
+              const procs = await listProcesses(capId);
+              if (Array.isArray(procs) && procs.length > 0) return procs;
+            } catch (err) {
+              console.error('listProcesses failed during retry', err);
+            }
+            // wait before retrying
+            // small sleep util
+            await new Promise((res) => setTimeout(res, delayMs));
+            delayMs *= 1.5;
+          }
+          return null;
+        }
 
-
-        setCapabilities((prevCaps) =>
-          prevCaps.map((c) =>
-            c.id === processCapId
-              ? {
-                  ...c,
-                  processes: coreProcesses.map((proc: any, idx: number) => ({
-                    id: idx + 10000,
-                    name: proc.name,
-                    description: proc.description,
-                    level: 'core',
-                    subprocesses: Array.isArray(proc.subprocesses)
-                      ? proc.subprocesses.map((sub: any, subIdx: number) => ({
-                          id: `${idx + 10000}-${subIdx}`,
-                          name: sub.name,
-                          lifecycle_phase: sub.lifecycle_phase,
-                        }))
-                      : [],
-                  })),
-                }
-              : c
-          )
-        );
-
-        toast.success(`Successfully generated ${coreProcesses.length} processes`);
+        if (Array.isArray(created) && created.length > 0) {
+          // Try to fetch persisted processes for the capability with retries
+          const fetched = await fetchProcessesForCapWithRetry(processCapId as number, 6, 300);
+          if (fetched && fetched.length > 0) {
+            // merge fetched processes into capabilities state
+            setCapabilities((prev) => prev.map((c) => (c.id === processCapId ? { ...c, processes: fetched } : c)));
+            if (processCapId != null) setExpandedIds((prev) => (prev.includes(processCapId) ? prev : [processCapId, ...prev]));
+            toast.success(`Successfully generated and saved ${fetched.length} processes`);
+          } else {
+            // persisted data not available yet; use created payload if present, otherwise fall back to LLM preview
+            // prefer created if it contains usable entries
+            const prefer = created.length > 0 ? created : coreFromLLM;
+            if (Array.isArray(prefer) && prefer.length > 0) {
+              setCapabilities((prevCaps) =>
+                prevCaps.map((c) =>
+                  c.id === processCapId
+                    ? {
+                        ...c,
+                        processes: prefer.map((proc: any, idx: number) => ({
+                          id: proc.id ?? idx + 10000,
+                          name: proc.name,
+                          description: proc.description,
+                          level: proc.level || 'core',
+                          subprocesses: Array.isArray(proc.subprocesses)
+                            ? proc.subprocesses.map((sub: any, subIdx: number) => ({
+                                id: sub.id ?? `${idx + 10000}-${subIdx}`,
+                                name: sub.name,
+                                lifecycle_phase: sub.lifecycle_phase,
+                              }))
+                            : [],
+                        })),
+                      }
+                    : c
+                )
+              );
+              if (processCapId != null) setExpandedIds((prev) => (prev.includes(processCapId) ? prev : [processCapId, ...prev]));
+              toast.success(`Successfully generated ${prefer.length} processes (preview)`);
+            } else {
+              toast.success('Generation triggered but no processes returned yet; they should appear shortly');
+            }
+          }
+        } else {
+          // No created processes from backend; show LLM-parsed preview immediately and expand capability
+          const coreProcesses = coreFromLLM;
+          setCapabilities((prevCaps) =>
+            prevCaps.map((c) =>
+              c.id === processCapId
+                ? {
+                    ...c,
+                    processes: coreProcesses.map((proc: any, idx: number) => ({
+                      id: idx + 10000,
+                      name: proc.name,
+                      description: proc.description,
+                      level: 'core',
+                      subprocesses: Array.isArray(proc.subprocesses)
+                        ? proc.subprocesses.map((sub: any, subIdx: number) => ({
+                            id: `${idx + 10000}-${subIdx}`,
+                            name: sub.name,
+                            lifecycle_phase: sub.lifecycle_phase,
+                          }))
+                        : [],
+                    })),
+                  }
+                : c
+            )
+          );
+          if (processCapId != null) setExpandedIds((prev) => (prev.includes(processCapId) ? prev : [processCapId, ...prev]));
+          toast.success(`Successfully generated ${coreProcesses.length} processes (preview)`);
+        }
         setIsProcessModalOpen(false);
       } else {
         toast.error('Failed to generate processes');
