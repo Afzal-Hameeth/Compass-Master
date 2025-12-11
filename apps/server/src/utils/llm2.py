@@ -99,7 +99,14 @@ class GeminiClient:
             # Import settings manager here to avoid circular imports
             from config.llm_settings import llm_settings_manager
             settings = await llm_settings_manager.get_all_settings()
-            
+
+            # Store vaultName from settings if provided (not used by Gemini client
+            # currently, but keep for consistency and future secret retrieval).
+            vault_url = settings.get("vaultName")
+            if vault_url:
+                # attach to instance so other methods could use it later
+                setattr(self, "key_vault_url", vault_url)
+
             config = self._load_config()
             self._get_client()
 

@@ -124,7 +124,13 @@ class AzureOpenAIClient:
             # Import settings manager here to avoid circular imports
             from config.llm_settings import llm_settings_manager
             settings = await llm_settings_manager.get_all_settings()
-            
+
+            # Use vault URL from user-configured settings so secret retrieval
+            # fails when the vault is misconfigured (preventing generation)
+            vault_url = settings.get("vaultName")
+            if vault_url:
+                self.key_vault_url = vault_url
+
             config = self._load_config()
             client = self._get_client()
 
