@@ -4,7 +4,7 @@ from tortoise.exceptions import DoesNotExist
 from database.models import Process, Capability, SubProcess
 
 
-async def create_process(name: str, level: str, description: str, capability_id: Optional[int] = None, subprocesses: Optional[List[Dict[str, Any]]] = None) -> Process:
+async def create_process(name: str, level: str, description: str, capability_id: Optional[int] = None, subprocesses: Optional[List[Dict[str, Any]]] = None, category: Optional[str] = None) -> Process:
     async with in_transaction():
         capability_obj = None
         if capability_id is not None:
@@ -12,7 +12,7 @@ async def create_process(name: str, level: str, description: str, capability_id:
                 capability_obj = await Capability.get(id=capability_id)
             except DoesNotExist:
                 capability_obj = None
-        proc = await Process.create(name=name, level=level, description=description, capability=capability_obj)
+        proc = await Process.create(name=name, level=level, description=description, capability=capability_obj, category=category)
         
         # Create associated subprocesses if provided
         if subprocesses:
@@ -20,6 +20,7 @@ async def create_process(name: str, level: str, description: str, capability_id:
                 await SubProcess.create(
                     name=sub_data.get("name", ""),
                     description=sub_data.get("description", ""),
+                    category=sub_data.get("category"),
                     process=proc
                 )
         
