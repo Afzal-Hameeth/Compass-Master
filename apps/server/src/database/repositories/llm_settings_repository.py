@@ -42,9 +42,9 @@ async def get_all_settings_dict() -> Dict[str, Any]:
         }
     # Return defaults if no settings exist
     return {
-        "provider": "secure",
+        "provider": "azure",
         "vaultName": "https://kvcapabilitycompass.vault.azure.net/",
-        "temperature": 0.2,
-        "maxTokens": 1500,
+        "temperature": 0.5,
+        "maxTokens": 8000,
         "topP": 0.9,
     }
