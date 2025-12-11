@@ -169,18 +169,6 @@ const Sidebar: React.FC = () => {
                       <input
                         type="radio"
                         name="llm-provider"
-                        value="secure"
-                        checked={llmSettings.provider === 'secure'}
-                        onChange={() => handleLLMProviderChange('secure')}
-                        disabled={isLoadingLLM}
-                        className="cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-700">Secure Azure OpenAI</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="llm-provider"
                         value="azure"
                         checked={llmSettings.provider === 'azure'}
                         onChange={() => handleLLMProviderChange('azure')}

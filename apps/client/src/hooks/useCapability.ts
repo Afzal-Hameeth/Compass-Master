@@ -13,6 +13,7 @@ export type Process = {
 	name: string;
 	level: string;
 	description: string;
+	category?: string;
 	lifecycle_phase?: string;
 	subprocesses?: Process[];
 };

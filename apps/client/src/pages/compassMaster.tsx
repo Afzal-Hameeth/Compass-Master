@@ -230,12 +230,14 @@ export default function Home() {
           tempId: idx,
           name: proc.name,
           description: proc.description,
+          category: proc.category || '',
           level: proc.level || processLevel || 'core',
           subprocesses: Array.isArray(proc.subprocesses)
             ? proc.subprocesses.map((sub: any, subIdx: number) => ({
                 id: sub.id ?? `${idx + 10000}-${subIdx}`,
                 name: sub.name,
                 description: sub.description,
+                category: sub.category || '',
                 lifecycle_phase: sub.lifecycle_phase,
               }))
             : [],
@@ -561,6 +563,11 @@ export default function Home() {
                                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
                                                 {p.level}
                                               </span>
+                                              {p.category && (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+                                                  {p.category}
+                                                </span>
+                                              )}
                                               {hasSubprocesses && (
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-700 font-medium">
                                                   {subprocesses.length} subprocess{subprocesses.length !== 1 ? 'es' : ''}
@@ -614,6 +621,11 @@ export default function Home() {
                                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
                                                         subprocess
                                                       </span>
+                                                      {sub.category && (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                                          {sub.category}
+                                                        </span>
+                                                      )}
                                                     </div>
                                                     {sub.description && <p className="text-xs text-gray-600 mt-2">{sub.description}</p>}
                                                   </div>
@@ -918,7 +930,12 @@ export default function Home() {
                           <div className="flex-1">
                             <div className="flex items-center justify-between">
                               <div className="font-medium text-gray-900">{proc.name}</div>
-                              <div className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700">{proc.level}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700">{proc.level}</div>
+                                {proc.category && (
+                                  <div className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700">{proc.category}</div>
+                                )}
+                              </div>
                             </div>
                             {proc.description && <div className="mt-1 text-sm text-gray-600">{proc.description}</div>}
                             
@@ -948,8 +965,13 @@ export default function Home() {
                                         className="mt-1"
                                       />
                                       <div className="text-sm text-gray-700 flex-1">
-                                        <div><span className="font-medium">{sub.name}</span></div>
-                                        {sub.lifecycle_phase && <div className="text-xs text-gray-500">Phase: {sub.lifecycle_phase}</div>}
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium">{sub.name}</span>
+                                          {sub.category && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700">{sub.category}</span>
+                                          )}
+                                        </div>
+                                        {sub.lifecycle_phase && <div className="text-xs text-gray-500 mt-0.5">Phase: {sub.lifecycle_phase}</div>}
                                         {sub.description && <div className="text-xs text-gray-600 mt-0.5">{sub.description}</div>}
                                       </div>
                                     </div>

@@ -235,6 +235,7 @@ async def list_capabilities():
                     "id": sp.id,
                     "name": sp.name,
                     "description": sp.description,
+                    "category": sp.category,
                 }
                 for sp in subprocs
             ]
@@ -244,6 +245,7 @@ async def list_capabilities():
                 "name": p.name,
                 "level": level,
                 "description": p.description,
+                "category": p.category,
                 "subprocesses": subprocess_list,
             })
 
