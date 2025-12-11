@@ -23,7 +23,6 @@ class ProcessLevel(str, Enum):
     ENTERPRISE = "enterprise"
     CORE = "core"
     PROCESS = "process"
-    SUBPROCESS = "subprocess"
 
 class Process(TimestampMixin):
     id = fields.IntField(pk=True)
@@ -32,8 +31,21 @@ class Process(TimestampMixin):
     description = fields.CharField(max_length=255)
     capability = fields.ForeignKeyField('models.Capability', related_name='processes', null=True)
 
+
 class SubProcess(TimestampMixin):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=255)
   description = fields.CharField(max_length=255, null=True)
   process = fields.ForeignKeyField('models.Process', related_name='subprocesses', null=False)
+
+
+class LLMSettings(TimestampMixin):
+  id = fields.IntField(pk=True)
+  provider = fields.CharField(max_length=50, default="secure")
+  vault_name = fields.CharField(max_length=255, default="https://kvcapabilitycompass.vault.azure.net/")
+  temperature = fields.FloatField(default=0.2)
+  max_tokens = fields.IntField(default=1500)
+  top_p = fields.FloatField(default=0.9)
+  
+  class Meta:
+    table = "llm_settings"

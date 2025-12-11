@@ -121,8 +121,17 @@ class AzureOpenAIClient:
         - process_type: optional process type for LLM context
         """
         try:
+            # Import settings manager here to avoid circular imports
+            from config.llm_settings import llm_settings_manager
+            settings = await llm_settings_manager.get_all_settings()
+            
             config = self._load_config()
             client = self._get_client()
+
+            
+            temperature = settings.get("temperature", 0.2)
+            max_tokens = settings.get("maxTokens", 1500)
+            top_p = settings.get("topP", 0.9)
 
             workspace_content = ""
             if context_sections:
@@ -160,9 +169,9 @@ class AzureOpenAIClient:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt_text}
                 ],
-                temperature=0.2,
-                max_tokens=1500,
-                top_p=0.9,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
                 frequency_penalty=0.0
             )
             generated = response.choices[0].message.content.strip()

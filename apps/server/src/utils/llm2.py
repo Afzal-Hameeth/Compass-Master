@@ -37,7 +37,7 @@ class GeminiClient:
         """Load config from environment variables"""
         if self._config is None:
             self._config = {
-                "api_key": "AIzaSyBobBeHyYq5rwut41plMQfGIs9Jl3zc5Ws",
+                "api_key": "AIzaSyA6a2MPejOQJYGskVDgST3WbCpE1-V4vVU",
                 "model": "gemini-2.5-flash-lite",
             }
             if self._config.get("model"):
@@ -96,8 +96,17 @@ class GeminiClient:
         - process_type: optional process type for LLM context
         """
         try:
+            # Import settings manager here to avoid circular imports
+            from config.llm_settings import llm_settings_manager
+            settings = await llm_settings_manager.get_all_settings()
+            
             config = self._load_config()
             self._get_client()
+
+            # Use configured values from settings, fallback to defaults
+            temperature = settings.get("temperature", 0.2)
+            max_tokens = settings.get("maxTokens", 1500)
+            top_p = settings.get("topP", 0.9)
 
             workspace_content = ""
             if context_sections:
@@ -133,9 +142,9 @@ class GeminiClient:
                 model_name=config["model"],
                 system_instruction=system_prompt,
                 generation_config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 1500,
-                    "top_p": 0.9,
+                    "temperature": temperature,
+                    "max_output_tokens": max_tokens,
+                    "top_p": top_p,
                     "top_k": 40,
                 }
             )
@@ -147,62 +156,72 @@ class GeminiClient:
             logger.debug(f"Raw LLM response (first 2000 chars):\n{generated[:2000]}")
 
             def _clean_candidate(text: str) -> str:
-                s = text
+                s = text or ""
 
+                # Remove common fenced code markers and backticks
                 s = re.sub(r"```(?:json|yaml)?\n", "", s)
                 s = re.sub(r"```", "", s)
                 s = s.replace('`', '')
 
+                # Unwrap bold/italic markers
                 s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
                 s = re.sub(r"\*([^*]+)\*", r"\1", s)
 
-                match = re.search(r'[{\[]', s)
-                if match:
-                    start = match.start()
-                    s = s[start:]
-
+                # Unescape HTML entities
                 try:
                     import html
                     s = html.unescape(s)
                 except Exception:
                     pass
-                # CRITICAL: Fix double-escaped quotes FIRST: ""key"" -> "key"
-                s = re.sub(r'""([^"]*?)""', r'"\1"', s)
-                # Normalize all types of quotes to double quotes
-                s = s.replace('\u201c', '"').replace('\u201d', '"')  # Smart double quotes
-                s = s.replace('\u2018', '"').replace('\u2019', '"')  # Smart single quotes
-                s = s.replace('\u201e', '"').replace('\u201f', '"')  # Double low-9 quotes
-                s = s.replace('\u2039', '"').replace('\u203a', '"')  # Guillemets
-                s = s.replace('«', '"').replace('»', '"')  # French quotes
-                # Remove control characters early
+
+                # Remove control characters that may break JSON parsing
                 s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
-                # Convert remaining single quotes to double quotes
-                s = s.replace("'", '"')
-                # Fix escaped quotes
-                s = s.replace('\\"', '"')
-                # Fix double double quotes (again, in case of complex patterns)
-                s = re.sub(r'""\s*([^"\n\r]+?)\s*""', r'"\1"', s)
-                # Remove trailing commas in objects/arrays
-                s = re.sub(r',\s*(?=[}\]])', '', s)
-                # Fix missing colons after quoted keys: "key" {value -> "key": {value
-                s = re.sub(r'"([^"]+)"\s*([{[])', r'"\1": \2', s)
-                # Fix missing colons: "key" "value" -> "key": "value"
-                s = re.sub(r'"([^"]+)"\s+"', r'"\1": "', s)
-                # Fix unquoted string values (simple heuristic)
-                s = re.sub(r': ([A-Za-z][A-Za-z0-9\s&\-]*?)([,}])', r': "\1"\2', s)
-                # Handle truncated strings: close any unclosed quoted string at the end
-                if s.rstrip().endswith('"') is False and s.rstrip()[-1] not in '}]':
-                    # Find the last unclosed quote
-                    last_quote = s.rfind('"')
-                    if last_quote != -1:
-                        after_quote = s[last_quote+1:].rstrip()
-                        if after_quote and not after_quote.startswith(','):
-                            s = s[:last_quote+1] + after_quote.rstrip(',') + '"'
-                # Fix incomplete JSON by closing unclosed structures
-                open_braces = s.count('{') - s.count('}')
-                open_brackets = s.count('[') - s.count(']')
-                s = s.rstrip(',').rstrip() + '}' * open_braces + ']' * open_brackets
-                return s
+
+                # Try to extract the first balanced JSON object/array from the text.
+                def _extract_first_json(sn: str) -> str:
+                    start_idx = None
+                    for i, ch in enumerate(sn):
+                        if ch in '{[':
+                            start_idx = i
+                            break
+                    if start_idx is None:
+                        return sn
+
+                    stack = []
+                    in_string = False
+                    escape = False
+                    for j in range(start_idx, len(sn)):
+                        c = sn[j]
+                        if escape:
+                            escape = False
+                            continue
+                        if c == '\\':
+                            escape = True
+                            continue
+                        if c == '"':
+                            in_string = not in_string
+                            continue
+                        if in_string:
+                            continue
+                        if c == '{' or c == '[':
+                            stack.append(c)
+                        elif c == '}' or c == ']':
+                            if not stack:
+                                # unmatched closing, give up
+                                return sn[start_idx:j+1]
+                            opening = stack.pop()
+                            if (opening == '{' and c != '}') or (opening == '[' and c != ']'):
+                                # mismatched, continue searching
+                                continue
+                            if not stack:
+                                return sn[start_idx:j+1]
+                    # If we get here, we didn't find a balanced end; return the substring from start
+                    return sn[start_idx:]
+
+                extracted = _extract_first_json(s)
+
+                # Trim and return extracted candidate; do not aggressively rewrite quotes/escapes
+                return extracted.strip()
 
             tried = []
             parsed = None

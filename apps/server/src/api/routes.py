@@ -11,17 +11,10 @@ from database.repositories import capability_repository, process_repository, dom
 from database.models import Capability as CapabilityModel, Process as ProcessModel, Domain as DomainModel, SubProcess as SubProcessModel
 from utils.llm import azure_openai_client
 from utils.llm2 import gemini_client
-from utils.secure_llm import azure_openai_client as secure_azure_openai_client
+from config.llm_settings import llm_settings_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Global LLM configuration
-current_llm_provider = "secure"
-llm_vault_name = "https://kvcapabilitycompass.vault.azure.net/"
-llm_temperature = 0.2
-llm_max_tokens = 1500
-llm_top_p = 0.9
 
 class LLMProviderRequest(BaseModel):
     provider: str  # "azure", "gemini", or "secure"
@@ -48,13 +41,13 @@ async def research_capabilities(payload: ResearchRequest):
 
     logger.info(f"[Research] User query: {query}")
     logger.info(f"[Research] Capability names: {capability_names}")
-    logger.info(f"[Research] Using LLM provider: {current_llm_provider}")
+    
+    provider = await llm_settings_manager.get_setting("provider", "secure")
+    logger.info(f"[Research] Using LLM provider: {provider}")
 
     # Select LLM client based on current provider
-    if current_llm_provider == "gemini":
+    if provider == "gemini":
         llm_client = gemini_client
-    elif current_llm_provider == "secure":
-        llm_client = secure_azure_openai_client
     else:
         llm_client = azure_openai_client
 
@@ -126,31 +119,23 @@ async def health_check():
 @router.get("/settings/llm-provider")
 async def get_llm_provider():
     """Get current LLM provider and configuration"""
-    return JSONResponse({
-        "provider": current_llm_provider,
-        "vaultName": llm_vault_name,
-        "temperature": llm_temperature,
-        "maxTokens": llm_max_tokens,
-        "topP": llm_top_p,
-    })
+    settings = await llm_settings_manager.get_all_settings()
+    return JSONResponse(settings)
 
 
 @router.post("/settings/llm-provider")
 async def set_llm_provider(payload: LLMProviderRequest):
     """Set the LLM provider (azure, gemini, or secure)"""
-    global current_llm_provider
     if payload.provider not in ["azure", "gemini", "secure"]:
         raise HTTPException(status_code=400, detail="Invalid provider. Must be 'azure', 'gemini', or 'secure'")
-    current_llm_provider = payload.provider
-    logger.info(f"LLM provider changed to: {current_llm_provider}")
-    return JSONResponse({"provider": current_llm_provider, "message": f"Switched to {payload.provider} LLM"})
+    settings = await llm_settings_manager.update_settings({"provider": payload.provider})
+    logger.info(f"LLM provider changed to: {payload.provider}")
+    return JSONResponse({"provider": payload.provider, "message": f"Switched to {payload.provider} LLM"})
 
 
 @router.post("/settings/llm-config")
 async def set_llm_config(payload: LLMConfigRequest):
     """Set the LLM configuration"""
-    global current_llm_provider, llm_vault_name, llm_temperature, llm_max_tokens, llm_top_p
-    
     if payload.provider not in ["azure", "gemini", "secure"]:
         raise HTTPException(status_code=400, detail="Invalid provider. Must be 'azure', 'gemini', or 'secure'")
     
@@ -163,22 +148,20 @@ async def set_llm_config(payload: LLMConfigRequest):
     if not (0 <= payload.topP <= 1):
         raise HTTPException(status_code=400, detail="Top P must be between 0 and 1")
     
-    current_llm_provider = payload.provider
-    llm_vault_name = payload.vaultName
-    llm_temperature = payload.temperature
-    llm_max_tokens = payload.maxTokens
-    llm_top_p = payload.topP
-    
-    logger.info(f"LLM configuration updated: provider={current_llm_provider}, vault={llm_vault_name}, temperature={llm_temperature}, maxTokens={llm_max_tokens}, topP={llm_top_p}")
+    new_settings = {
+        "provider": payload.provider,
+        "vaultName": payload.vaultName,
+        "temperature": payload.temperature,
+        "maxTokens": payload.maxTokens,
+        "topP": payload.topP,
+    }
+    settings = await llm_settings_manager.update_settings(new_settings)
+    logger.info(f"LLM configuration updated: {new_settings}")
     
     return JSONResponse({
         "status": "success",
-        "provider": current_llm_provider,
-        "vaultName": llm_vault_name,
-        "temperature": llm_temperature,
-        "maxTokens": llm_max_tokens,
-        "topP": llm_top_p,
-        "message": "LLM configuration updated successfully"
+        "message": "LLM configuration updated successfully",
+        **settings
     })
 
 
@@ -364,18 +347,18 @@ async def generate_processes(payload: GenerateProcessRequest):
     """Generate processes using LLM and save them to the database"""
     try:
         logger.info(f"/processes/generate called with payload: capability_name={payload.capability_name}, capability_id={payload.capability_id}, domain={payload.domain}, process_type={payload.process_type}")
-        logger.info(f"Using LLM provider: {current_llm_provider}")
+        
+        provider = await llm_settings_manager.get_setting("provider", "secure")
+        logger.info(f"Using LLM provider: {provider}")
         
         # Select LLM client based on current provider
-        if current_llm_provider == "gemini":
+        if provider == "gemini":
             llm_client = gemini_client
-        elif current_llm_provider == "secure":
-            llm_client = secure_azure_openai_client
         else:
             llm_client = azure_openai_client
         
         # Call the LLM to generate processes
-        logger.info(f"Calling {current_llm_provider} LLM client.generate_processes...")
+        logger.info(f"Calling {provider} LLM client.generate_processes...")
         print(f"[DEBUG] /processes/generate payload: capability_name={payload.capability_name}, capability_id={payload.capability_id}, domain={payload.domain}, process_type={payload.process_type}")
         try:
             llm_result = await llm_client.generate_processes(payload.capability_name, payload.domain, payload.process_type)
