@@ -91,7 +91,6 @@ class AzureOpenAIClient:
             process_type: str,
     ) -> Dict[str, Any]:
         """Generate processes for a capability in a specific domain with a given process type using Azure OpenAI LLM"""
-        # Use the unified generator with a tight, JSON-only system prompt
         schema_example = {
             "capability_name": capability_name,
             "domain": domain,
@@ -142,43 +141,78 @@ class AzureOpenAIClient:
                 for i, section in enumerate(context_sections, 1):
                     workspace_content += f"\n{i}. {section}\n"
 
-            schema_example = {
-                "capability_name": capability_name,
-                "domain": domain,
-                "process_type": process_type,
-                "processes": [
-                    {"name": "Example Process", "description": "",
-                     "subprocesses": [{"name": "Example Sub", "description": ""}]}
-                ]
-            }
-
-            # One-shot example for structured output
-            example_output = json.dumps({
-                "processes": [
-                    {
-                        "name": "Client Onboarding & KYC",
-                        "category": "Front Office",
-                        "description": "",
-                        "sub_processes": [
-                            {
-                                "name": "Account Setup",
-                                "category": "Front Office",
-                                "description": ""
-                            },
-                            {
-                                "name": "Internal Approvals",
-                                "category": "Front Office",
-                                "description": ""
-                            },
-                            {
-                                "name": "Reference Data Setup",
-                                "category": "Front Office",
-                                "description": ""
-                            }
-                        ]
-                    }
-                ]
-            }, indent=2)
+            example_output = json.dumps(
+{
+  "processes": [
+    {
+      "name": "Client Onboarding &amp; KYC",
+      "category": "Front Office",
+      "description": "",
+      "sub_processes": [
+        {
+          "name": "Account Setup",
+          "category": "Front Office",
+          "description": ""
+        },
+        {
+          "name": "Internal Approvals",
+          "category": "Front Office",
+          "description": ""
+        },
+        {
+          "name": "Reference Data Setup",
+          "category": "Front Office",
+          "description": ""
+        }
+      ]
+    },
+    {
+      "name": "Compliance Monitoring",
+      "category": "Middle Office",
+      "description": "",
+      "sub_processes": [
+        {
+          "name": "Pre-Trade Checks",
+          "category": "Middle Office",
+          "description": ""
+        },
+        {
+          "name": "Post-Trade Surveillance",
+          "category": "Middle Office",
+          "description": ""
+        },
+        {
+          "name": "Breach Reporting",
+          "category": "Middle Office",
+          "description": ""
+        }
+      ]
+    },
+    {
+      "name": "Trade Settlement",
+      "category": "Back Office",
+      "description": "",
+      "sub_processes": [
+        {
+          "name": "Trade Matching",
+          "category": "Back Office",
+          "description": ""
+        },
+        {
+          "name": "Broker/Custodian Confirmation",
+          "category": "Back Office",
+          "description": ""
+        },
+        {
+          "name": "Exception &amp; Break Resolution",
+          "category": "Back Office",
+          "description": ""
+        }
+      ]
+    }
+  ]
+}
+, indent=2)
 
             system_prompt = (
                 f"You are an Expert SME in {domain or 'organizational capabilities'} who generates structured process definitions for enterprise capabilities. "
