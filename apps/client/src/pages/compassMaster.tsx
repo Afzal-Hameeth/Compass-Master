@@ -849,12 +849,6 @@ export default function Home() {
               {/* AI Generation Mode */}
               {processMode === 'ai' && (
                 <>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-gray-700">
-                      <strong>Auto-generate processes</strong> based on the capability name and domain using AI. The system will create a complete process hierarchy with subprocesses.
-                    </p>
-                  </div>
-
                   <label className="block text-sm font-medium text-gray-700 mb-2">Process Level</label>
                   <select
                     className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"
