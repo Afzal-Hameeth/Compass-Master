@@ -238,7 +238,7 @@ const Sidebar: React.FC = () => {
                     <input
                       type="range"
                       min="256"
-                      max="4096"
+                      max="10000"
                       step="256"
                       value={llmSettings.maxTokens}
                       onChange={(e) => setLlmSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}

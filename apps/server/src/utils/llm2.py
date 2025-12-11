@@ -111,8 +111,8 @@ class GeminiClient:
             self._get_client()
 
             # Use configured values from settings, fallback to defaults
-            temperature = settings.get("temperature", 0.2)
-            max_tokens = settings.get("maxTokens", 1500)
+            temperature = settings.get("temperature", 0.5)
+            max_tokens = settings.get("maxTokens", 8000)
             top_p = settings.get("topP", 0.9)
 
             workspace_content = ""

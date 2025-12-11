@@ -144,7 +144,7 @@ async def set_llm_config(payload: LLMConfigRequest):
     if not (0 <= payload.temperature <= 1):
         raise HTTPException(status_code=400, detail="Temperature must be between 0 and 1")
     
-    if not (256 <= payload.maxTokens <= 4096):
+    if not (256 <= payload.maxTokens <= 10000):
         raise HTTPException(status_code=400, detail="Max tokens must be between 256 and 4096")
     
     if not (0 <= payload.topP <= 1):
