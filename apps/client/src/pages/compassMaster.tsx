@@ -23,6 +23,7 @@ export default function Home() {
   const {
     listDomains,
     listCapabilities,
+    createDomain,
     createCapability,
     updateCapability,
     listProcesses,
@@ -31,6 +32,9 @@ export default function Home() {
     deleteCapability,
     generateProcesses,
   } = useCapabilityApi();
+
+  const [newDomainName, setNewDomainName] = useState('');
+  const [isSavingDomain, setIsSavingDomain] = useState(false);
 
   const loadedRef = useRef(false);
 
@@ -121,9 +125,7 @@ export default function Home() {
           name: formName,
           description: formDescription,
         });
-        // Ensure the UI shows the domain name immediately without a full refresh.
-        // The API may return the created capability with a domain_id or without a resolved domain name,
-        // so prefer any domain value from the response, otherwise lookup from `domains` state.
+        
         const domainName =
           (newCap as any).domain || domains.find((d) => String(d.id) === String(selectedDomain))?.name || selectedDomain;
         setCapabilities((s) => [
@@ -145,6 +147,27 @@ export default function Home() {
       toast.error('Failed to save capability');
     }
     setIsModalOpen(false);
+  }
+
+  async function handleCreateDomain() {
+    const name = newDomainName.trim();
+    if (!name) {
+      toast.error('Enter a domain name');
+      return;
+    }
+    try {
+      setIsSavingDomain(true);
+      const created = await createDomain({ name });
+      setDomains((s) => [...s, created]);
+      setSelectedDomain(String((created as any).id));
+      setNewDomainName('');
+      toast.success('Domain created successfully');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to create domain');
+    } finally {
+      setIsSavingDomain(false);
+    }
   }
 
 
@@ -209,7 +232,7 @@ export default function Home() {
     if (processCapId == null) return;
     try {
       setIsGenerating(true);
-      // Get the capability name and domain to pass to the LLM
+      
       const parentCapability = capabilities.find((c) => c.id === processCapId);
       if (!parentCapability) {
         toast.error('Capability not found');
@@ -222,10 +245,10 @@ export default function Home() {
         const created = result.processes || [];
         const coreFromLLM = result.data?.core_processes || result.data?.['Core Processes'] || [];
 
-        // Prefer backend-created items if present, otherwise fall back to LLM-parsed core processes.
+        
         const preferSource = Array.isArray(created) && created.length > 0 ? created : coreFromLLM;
 
-        // Normalize preview entries for the modal (do NOT persist yet)
+        
         const normalized = (Array.isArray(preferSource) ? preferSource : []).map((proc: any, idx: number) => ({
           tempId: idx,
           name: proc.name,
@@ -263,21 +286,21 @@ export default function Home() {
     const ok = window.confirm('Are you sure you want to delete this process? This cannot be undone.');
     if (!ok) return;
     try {
-      // If it's a persisted process (numeric id) call backend
+      
       if (typeof processId === 'number') {
         await deleteProcess(processId);
       }
 
-      // Remove from local state (works for both persisted and temp frontend-only entries)
+      
       setCapabilities((prev) =>
         prev.map((c) => {
           if (c.id !== capId) return c;
           const processes = (c.processes || []).map((p: any) => ({ ...p }));
           if (parentProcessId == null) {
-            // deleting a top-level process
+            
             return { ...c, processes: processes.filter((p: any) => String(p.id) !== String(processId)) };
           }
-          // deleting a subprocess
+          
           return {
             ...c,
             processes: processes.map((p: any) => {
@@ -309,7 +332,7 @@ export default function Home() {
     }
   }
 
-  // Save selected generated processes (from LLM preview) into the DB for the current processCapId
+   
   async function saveSelectedGeneratedProcesses() {
     if (processCapId == null) return;
     if (!Array.isArray(generatedPreview) || generatedPreview.length === 0) return;
@@ -322,35 +345,36 @@ export default function Home() {
       setIsSavingGenerated(true);
       const createdProcs: any[] = [];
       
-      // Process each entry in generatedPreview
+      
       for (let procIdx = 0; procIdx < generatedPreview.length; procIdx++) {
         const procKey = `proc-${procIdx}`;
         const isProcessSelected = selectedGeneratedIdxs.has(procKey);
         
-        if (!isProcessSelected) continue; // Skip if top-level not selected
+        if (!isProcessSelected) continue; 
         
         const p = generatedPreview[procIdx];
         if (!p) continue;
         
         try {
-          // Prepare selected subprocesses for this process
+          
           const selectedSubs: any[] = [];
           if (Array.isArray(p.subprocesses)) {
             for (let subIdx = 0; subIdx < p.subprocesses.length; subIdx++) {
               const subKey = `proc-${procIdx}-sub-${subIdx}`;
-              if (selectedGeneratedIdxs.has(subKey)) {
+                if (selectedGeneratedIdxs.has(subKey)) {
                 const sub = p.subprocesses[subIdx];
-                selectedSubs.push({ name: sub.name, description: sub.description || '' });
+                selectedSubs.push({ name: sub.name, description: sub.description || '', category: sub.category || undefined });
               }
             }
           }
 
-          // Create the top-level process with its subprocesses in one call
+          
           const created = await createProcess({
             name: p.name,
             level: p.level,
             description: p.description || '',
             capability_id: processCapId,
+            category: p.category || undefined,
             subprocesses: selectedSubs.length > 0 ? selectedSubs : undefined,
           });
           createdProcs.push(created);
@@ -359,7 +383,7 @@ export default function Home() {
         }
       }
 
-      // Merge created processes into capabilities state
+      
       if (createdProcs.length > 0) {
         setCapabilities((prev) =>
           prev.map((c) => (c.id === processCapId ? { ...c, processes: [...(c.processes || []), ...createdProcs] } : c))
@@ -440,18 +464,36 @@ export default function Home() {
 
         <div className="flex items-center gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <select
-              className="border rounded-md px-3 py-2 bg-white text-sm text-gray-700 focus:ring-2 focus:ring-indigo-200"
-              value={selectedDomain}
-              onChange={(e) => setSelectedDomain(e.target.value)}
-            >
-              <option value="">Select Domain</option>
-              {domains.map((domain) => (
-                <option key={domain.id} value={String(domain.id)}>
-                  {domain.name}
-                </option>
-              ))}
-            </select>
+            {domains.length === 0 ? (
+              <div className="flex items-center gap-2">
+                <input
+                  className="border rounded-md px-3 py-2 bg-white text-sm text-gray-700 focus:ring-2 focus:ring-indigo-200"
+                  placeholder="Enter domain name"
+                  value={newDomainName}
+                  onChange={(e) => setNewDomainName(e.target.value)}
+                />
+                <button
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${newDomainName.trim() ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                  disabled={!newDomainName.trim() || isSavingDomain}
+                  onClick={handleCreateDomain}
+                >
+                  {isSavingDomain ? 'Saving...' : 'Add Domain'}
+                </button>
+              </div>
+            ) : (
+              <select
+                className="border rounded-md px-3 py-2 bg-white text-sm text-gray-700 focus:ring-2 focus:ring-indigo-200"
+                value={selectedDomain}
+                onChange={(e) => setSelectedDomain(e.target.value)}
+              >
+                <option value="">Select Domain</option>
+                {domains.map((domain) => (
+                  <option key={domain.id} value={String(domain.id)}>
+                    {domain.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <button
@@ -807,12 +849,6 @@ export default function Home() {
               {/* AI Generation Mode */}
               {processMode === 'ai' && (
                 <>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-gray-700">
-                      <strong>Auto-generate processes</strong> based on the capability name and domain using AI. The system will create a complete process hierarchy with subprocesses.
-                    </p>
-                  </div>
-
                   <label className="block text-sm font-medium text-gray-700 mb-2">Process Level</label>
                   <select
                     className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"

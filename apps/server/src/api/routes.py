@@ -101,12 +101,14 @@ class CapabilityCreateRequest(BaseModel):
 class SubProcessCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    category: Optional[str] = None
 
 class ProcessCreateRequest(BaseModel):
     name: str
     level: str
     description: str
     capability_id: Optional[int] = None
+    category: Optional[str] = None
     subprocesses: Optional[List[SubProcessCreateRequest]] = None
 
 
@@ -284,22 +286,51 @@ async def delete_capability(capability_id: int):
     return {"deleted": True}
 
 
-@router.post("/processes", response_model=Process_Pydantic)
+@router.post("/processes")
 async def create_process(payload: ProcessCreateRequest):
     subprocesses_data = []
     if payload.subprocesses:
         subprocesses_data = [
-            {"name": sp.name, "description": sp.description or ""}
+            {"name": sp.name, "description": sp.description or "", "category": sp.category} 
             for sp in payload.subprocesses
         ]
-    obj = await process_repository.create_process(
+    proc = await process_repository.create_process(
         payload.name,
         payload.level,
         payload.description,
         payload.capability_id,
-        subprocesses=subprocesses_data
+        subprocesses=subprocesses_data,
+        category=payload.category,
     )
-    return await Process_Pydantic.from_tortoise_orm(obj)
+
+    # Load subprocesses to return them immediately so frontend can display
+    try:
+        subs = await proc.subprocesses.all()
+    except Exception:
+        subs = []
+
+    subprocess_list = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "category": getattr(s, "category", None),
+        }
+        for s in subs
+    ]
+
+    level = getattr(proc.level, "value", proc.level)
+
+    result = {
+        "id": proc.id,
+        "name": proc.name,
+        "level": level,
+        "description": proc.description,
+        "category": getattr(proc, "category", None),
+        "subprocesses": subprocess_list,
+    }
+
+    return JSONResponse(result)
 
 
 @router.get("/processes", response_model=List[Process_Pydantic])
