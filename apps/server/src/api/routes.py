@@ -11,6 +11,7 @@ from database.repositories import capability_repository, process_repository, dom
 from database.models import Capability as CapabilityModel, Process as ProcessModel, Domain as DomainModel, SubProcess as SubProcessModel
 from utils.llm import azure_openai_client
 from utils.llm2 import gemini_client
+from utils.csv_export import get_csv_exporter
 from config.llm_settings import llm_settings_manager
 
 router = APIRouter()
@@ -453,6 +454,21 @@ async def generate_processes(payload: GenerateProcessRequest):
         capability = await capability_repository.fetch_by_id(payload.capability_id)
         if not capability:
             raise HTTPException(status_code=404, detail="Capability not found")
+        
+        # Save LLM response to CSV file
+        try:
+            csv_exporter = get_csv_exporter()
+            csv_filepath = csv_exporter.export_process_generation(
+                capability_name=payload.capability_name,
+                domain=payload.domain,
+                process_type=payload.process_type,
+                generated_data=generated_data,
+                provider=provider,
+            )
+            logger.info(f"LLM response saved to CSV: {csv_filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save LLM response to CSV: {str(e)}")
+            # Don't fail the entire request if CSV export fails, just log it
         
         # Return the LLM-generated data WITHOUT persisting (user must approve first)
         # Frontend will show this data in a preview modal with checkboxes, then call a separate endpoint to create selected items
