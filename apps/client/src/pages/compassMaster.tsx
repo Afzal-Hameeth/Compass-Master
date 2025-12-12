@@ -459,7 +459,7 @@ export default function Home() {
       <div className="mx-auto mt-6 bg-white p-6 px-8 rounded-lg shadow-sm max-w-6xl">
         <div className="flex items-center gap-3 mb-6">
           <FiLayers className="w-8 h-8" />
-          <h1 className="text-2xl font-semibold text-gray-900">Capabilities</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Sub-Vertical</h1>
         </div>
 
         <div className="flex items-center gap-4 mb-6">
@@ -501,13 +501,13 @@ export default function Home() {
             disabled={!selectedDomain}
             onClick={openAddModal}
           >
-            Add capability
+            Add sub-vertical
           </button>
         </div>
 
         <div>
           {capabilities.length === 0 ? (
-            <p className="text-gray-500">No capabilities yet.</p>
+            <p className="text-gray-500">No Sub-Verticals yet.</p>
           ) : (
             <ul className="space-y-4">
               {capabilities.map((c) => {

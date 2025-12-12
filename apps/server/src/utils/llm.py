@@ -159,11 +159,6 @@ class AzureOpenAIClient:
           "category": "Front Office",
           "description": ""
         },
-        {
-          "name": "Reference Data Setup",
-          "category": "Front Office",
-          "description": ""
-        }
       ]
     },
     {
@@ -176,16 +171,6 @@ class AzureOpenAIClient:
           "category": "Middle Office",
           "description": ""
         },
-        {
-          "name": "Post-Trade Surveillance",
-          "category": "Middle Office",
-          "description": ""
-        },
-        {
-          "name": "Breach Reporting",
-          "category": "Middle Office",
-          "description": ""
-        }
       ]
     },
     {
@@ -215,17 +200,17 @@ class AzureOpenAIClient:
 , indent=2)
 
             system_prompt = (
-                f"You are an Expert SME in {domain or 'organizational capabilities'} who generates structured process definitions for enterprise capabilities. "
+                f"You are an Expert SME in {domain} who generates structured process definitions for enterprise capabilities. "
                 f"\n\n## Task:\n"
-                f"Generate a list of {process_type or 'core'}-level processes for the capability '{capability_name}' within the {domain or 'specified'} domain. "
+                f"Generate a list of {process_type}-level processes for the '{capability_name}' within the {domain} domain. "
                 f"\n\n## Requirements:\n"
-                f"- Generate ONLY two {process_type or 'core'}-level processes relevant to this capability in this domain\n"
-                f"- Each process must have a name, category, description, and list of sub_processes\n"
-                f"- Each sub_process must have a name, category, and description\n"
+                f"- Generate {process_type}-level processes relevant to this capability in this domain\n"
+                f"- Each process must have a name, category, description\n"
+                f"-There is no limit on the amount on process, so make sure you display the complete proceseses, but make sure it doesn't exceed 10\n"
                 f"- Return data as valid JSON matching the provided schema\n"
                 f"- Do not invent processes; base them on standard industry practices for {capability_name} in {domain}\n"
                 f"- If the capability-domain combination is not recognized, return: {{'error': 'Capability not found for this domain'}}\n"
-                f"\n## Example Output Format:\n{example_output}"
+                f"\n## Example Output Format:\n{example_output} no limit on sub processes\n"
             
             )
 
