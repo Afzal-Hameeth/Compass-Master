@@ -170,6 +170,39 @@ export default function Home() {
     }
   }
 
+  async function handleExportCapability() {
+    if (!selectedExportCapId) {
+      toast.error('Select a capability to export');
+      return;
+    }
+    try {
+      setIsExporting(true);
+      const res = await fetch(`/api/export/capability/${selectedExportCapId}/csv`);
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cap = capabilities.find((c) => c.id === selectedExportCapId);
+      const name = cap ? `${cap.name.replace(/\s+/g, '_')}_export.csv` : `capability_${selectedExportCapId}_export.csv`;
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('CSV downloaded');
+      setIsExportModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to export CSV');
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
 
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [processCapId, setProcessCapId] = useState<number | null>(null);
@@ -182,9 +215,14 @@ export default function Home() {
   // Generated processes preview modal (LLM responses) - user must approve which to save
   const [generatedPreview, setGeneratedPreview] = useState<any[]>([]);
   const [isGeneratedModalOpen, setIsGeneratedModalOpen] = useState(false);
-  // Track selected processes by their index: { processIdx: set of selected subprocess indices, or null if no subprocesses selected }
+  
   const [selectedGeneratedIdxs, setSelectedGeneratedIdxs] = useState<Set<string>>(new Set());
   const [isSavingGenerated, setIsSavingGenerated] = useState(false);
+
+  // CSV export modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportCapId, setSelectedExportCapId] = useState<number | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const processLevelOptions = [
     'enterprise',
@@ -460,6 +498,15 @@ export default function Home() {
         <div className="flex items-center gap-3 mb-6">
           <FiLayers className="w-8 h-8" />
           <h1 className="text-2xl font-semibold text-gray-900">Sub-Vertical</h1>
+          <div className="ml-auto">
+                  <button
+                    className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-gray-100 border border-primary text-indigo-600 hover:bg-indigo-700 hover:text-white"
+                    onClick={() => setIsExportModalOpen(true)}
+                    title="Export as CSV"
+                  >
+                    Export as CSV
+                  </button>
+                </div>
         </div>
 
         <div className="flex items-center gap-4 mb-6">
@@ -881,6 +928,34 @@ export default function Home() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isExportModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsExportModalOpen(false)} />
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md z-50 overflow-hidden">
+            <div className="border-b border-gray-100 px-6 py-3 bg-gray-50 flex items-center gap-3">
+              <h2 className="text-lg font-bold text-gray-900">Export Capability as CSV</h2>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Capability</label>
+              <select
+                className="w-full border rounded-md px-3 py-2 mb-4"
+                value={selectedExportCapId ?? ''}
+                onChange={(e) => setSelectedExportCapId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">-- Select capability --</option>
+                {capabilities.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.name}</option>
+                ))}
+              </select>
+              <div className="flex justify-end gap-2">
+                <button className="px-3 py-1.5 rounded-md text-gray-600 hover:bg-gray-100" onClick={() => setIsExportModalOpen(false)}>Cancel</button>
+                <button className={`px-4 py-2 rounded-md text-white ${isExporting ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`} onClick={handleExportCapability} disabled={isExporting}>{isExporting ? 'Exporting...' : 'Export'}</button>
+              </div>
             </div>
           </div>
         </div>

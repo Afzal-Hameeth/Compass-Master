@@ -22,7 +22,8 @@ async def fetch_all_capabilities() -> List[Capability]:
 
 async def fetch_by_id(capability_id: int) -> Optional[Capability]:
     try:
-        return await Capability.get(id=capability_id, deleted_at=None)
+        # Ensure domain relation is prefetched so `.domain` is a model instance
+        return await Capability.filter(id=capability_id, deleted_at=None).prefetch_related('domain').first()
     except DoesNotExist:
         return None
 

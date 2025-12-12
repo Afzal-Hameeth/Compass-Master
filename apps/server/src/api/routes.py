@@ -13,6 +13,9 @@ from utils.llm import azure_openai_client
 from utils.llm2 import gemini_client
 from utils.csv_export import get_csv_exporter
 from config.llm_settings import llm_settings_manager
+import io
+import csv
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -209,6 +212,74 @@ async def delete_domain(domain_id: int):
 async def create_capability(payload: CapabilityCreateRequest):
     obj = await capability_repository.create_capability(payload.name, payload.description, payload.domain_id)
     return await Capability_Pydantic.from_tortoise_orm(obj)
+
+
+@router.get("/export/capability/{capability_id}/csv")
+async def export_capability_csv(capability_id: int):
+    """Export all processes and subprocesses for a capability as CSV."""
+    cap = await capability_repository.fetch_by_id(capability_id)
+    if not cap:
+        raise HTTPException(status_code=404, detail="Capability not found")
+
+    # Fetch processes for this capability
+    processes = await ProcessModel.filter(deleted_at=None, capability_id=capability_id).all()
+
+    output = io.StringIO()
+    fieldnames = [
+        "capability_name",
+        "domain",
+        "process_type",
+        "process_name",
+        "process_description",
+        "process_category",
+        "subprocess_name",
+        "subprocess_description",
+        "subprocess_category",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+
+    domain_name = cap.domain.name if getattr(cap, 'domain', None) else ""
+
+    for p in processes:
+        try:
+            subs = await p.subprocesses.all()
+        except Exception:
+            subs = []
+
+        if not subs:
+            writer.writerow({
+                "capability_name": cap.name,
+                "domain": domain_name,
+                "process_type": getattr(p.level, 'value', p.level),
+                "process_name": p.name,
+                "process_description": p.description or "",
+                "process_category": p.category or "",
+                "subprocess_name": "",
+                "subprocess_description": "",
+                "subprocess_category": "",
+            })
+        else:
+            for s in subs:
+                writer.writerow({
+                    "capability_name": cap.name,
+                    "domain": domain_name,
+                    "process_type": getattr(p.level, 'value', p.level),
+                    "process_name": p.name,
+                    "process_description": p.description or "",
+                    "process_category": p.category or "",
+                    "subprocess_name": s.name,
+                    "subprocess_description": s.description or "",
+                    "subprocess_category": s.category or "",
+                })
+
+    csv_bytes = output.getvalue().encode("utf-8")
+    output.close()
+
+    filename = f"capability_{capability_id}_export.csv"
+    return StreamingResponse(io.BytesIO(csv_bytes), media_type="text/csv", headers={
+        "Content-Disposition": f"attachment; filename=\"{filename}\""
+    })
 
 
 @router.get("/capabilities")
