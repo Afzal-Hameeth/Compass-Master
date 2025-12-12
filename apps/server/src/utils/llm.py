@@ -1,5 +1,5 @@
 import logging
-from openai import AzureOpenAI
+from openai import OpenAI
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from typing import List, Dict, Any, Optional
@@ -31,34 +31,56 @@ class AzureOpenAIClient:
     def __init__(self):
         self._config = None
         self._client = None
-        self.key_vault_url = "https://kvcapabilitycompass.vault.azure.net/"
+        self.key_vault_url = "https://fstoazuregpt5.vault.azure.net/"
 
-    def _load_config(self):
-        """Load API key from Azure Key Vault, use hardcoded values for other config"""
+    def _load_config(self, settings: Optional[Dict[str, Any]] = None):
+        """Load API key and endpoint from Azure Key Vault"""
         if self._config is None:
             kv_url = self.key_vault_url
             api_key = None
+            endpoint = None
+            
             credential = DefaultAzureCredential()
-            client = SecretClient(vault_url=kv_url, credential=credential)
+            kvclient = SecretClient(vault_url=kv_url, credential=credential)
+            
             try:
-                api_key = client.get_secret("kvCapabilityCompassKeyLLM").value
+                # Load API key from Key Vault
+                api_key_secret = kvclient.get_secret("llm-key")
+                api_key = api_key_secret.value
                 logger.info("API Key loaded from Key Vault")
             except Exception as e:
-                logger.warning(
-                    f"kvCapabilityCompassKeyLLM not found in Key Vault or access denied: {e}; will try environment variable AZURE_OPENAI_API_KEY")
-                api_key = env.get("AZURE_OPENAI_API_KEY")
+                logger.error(f"Failed to load API key from Key Vault: {e}")
+                raise ValueError(f"Failed to load API key from Key Vault: {e}")
+            
+            try:
+                # Load endpoint from Key Vault
+                endpoint_secret = kvclient.get_secret("llm-endpoint")
+                endpoint = endpoint_secret.value
+                logger.info("Endpoint loaded from Key Vault")
+            except Exception as e:
+                logger.warning(f"Failed to load endpoint from Key Vault: {e}; using default endpoint")
+                endpoint = "https://stg-secureapi.hexaware.com/api/azureai"
+
+            # Use settings if provided, otherwise use defaults
+            api_version = "2024-12-01-preview"
+            model = "gpt-5.1"
+            if settings:
+                api_version = settings.get("apiVersion", api_version)
+                model = settings.get("model", model)
 
             self._config = {
                 "api_key": api_key,
-                "endpoint": "https://stg-secureapi.hexaware.com/api/azureai",
-                "api_version": "2024-12-01-preview",
-                "model": "gpt-4o",
+                "endpoint": endpoint,
+                "api_version": api_version,
+                "model": model,
             }
 
             if self._config.get("api_key"):
                 logger.info(f"API Key loaded, starts with: {self._config['api_key'][:5]}...")
                 logger.info(
                     f"Azure OpenAI config - Model: {self._config['model']}, Endpoint: {self._config['endpoint']}")
+            else:
+                logger.error("Failed to load API key from Key Vault")
 
         return self._config
 
@@ -70,10 +92,9 @@ class AzureOpenAIClient:
                     "Missing required Azure OpenAI config: api_key. "
                     "Provide this via environment variable AZURE_OPENAI_API_KEY."
                 )
-            self._client = AzureOpenAI(
+            self._client = OpenAI(
                 api_key=config["api_key"],
-                api_version=config["api_version"],
-                azure_endpoint=config["endpoint"]
+                base_url=config["endpoint"]
             )
         return self._client
 
@@ -120,9 +141,9 @@ class AzureOpenAIClient:
             # fails when the vault is misconfigured (preventing generation)
             vault_url = settings.get("vaultName")
             if vault_url:
-                self.key_vault_url = vault_url
+                    self.key_vault_url = vault_url
 
-            config = self._load_config()
+                config = self._load_config(settings)
             client = self._get_client()
 
             
