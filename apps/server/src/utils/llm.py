@@ -143,7 +143,7 @@ class AzureOpenAIClient:
             if vault_url:
                     self.key_vault_url = vault_url
 
-                config = self._load_config(settings)
+                    config = self._load_config(settings)
             client = self._get_client()
 
             

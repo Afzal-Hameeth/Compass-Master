@@ -15,7 +15,7 @@ class Domain(TimestampMixin):
 class Capability(TimestampMixin):
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
-    description = fields.CharField(max_length=255)
+    description = fields.TextField()
     domain = fields.ForeignKeyField('models.Domain', related_name='capabilities', null=True)
 
 
@@ -28,14 +28,14 @@ class Process(TimestampMixin):
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
     level = fields.CharEnumField(ProcessLevel)
-    description = fields.CharField(max_length=255)
+    description = fields.TextField()
     capability = fields.ForeignKeyField('models.Capability', related_name='processes', null=True)
     category = fields.CharField(max_length=255, null=True)
 
 class SubProcess(TimestampMixin):
   id = fields.IntField(pk=True)
   name = fields.CharField(max_length=255)
-  description = fields.CharField(max_length=255, null=True)
+  description = fields.TextField(null=True)
   process = fields.ForeignKeyField('models.Process', related_name='subprocesses', null=False)
   category = fields.CharField(max_length=255, null=True)
 
