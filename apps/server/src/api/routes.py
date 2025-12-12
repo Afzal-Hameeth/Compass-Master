@@ -24,7 +24,6 @@ class LLMConfigRequest(BaseModel):
     provider: str
     vaultName: str
     temperature: float
-    maxTokens: int
     topP: float
 
 class ResearchRequest(BaseModel):
@@ -145,9 +144,6 @@ async def set_llm_config(payload: LLMConfigRequest):
     if not (0 <= payload.temperature <= 1):
         raise HTTPException(status_code=400, detail="Temperature must be between 0 and 1")
     
-    if not (256 <= payload.maxTokens <= 10000):
-        raise HTTPException(status_code=400, detail="Max tokens must be between 256 and 4096")
-    
     if not (0 <= payload.topP <= 1):
         raise HTTPException(status_code=400, detail="Top P must be between 0 and 1")
     
@@ -155,7 +151,6 @@ async def set_llm_config(payload: LLMConfigRequest):
         "provider": payload.provider,
         "vaultName": payload.vaultName,
         "temperature": payload.temperature,
-        "maxTokens": payload.maxTokens,
         "topP": payload.topP,
     }
     settings = await llm_settings_manager.update_settings(new_settings)
@@ -372,6 +367,7 @@ async def delete_process(process_id: int):
 class GenerateProcessRequest(BaseModel):
     capability_name: str
     capability_id: int
+    capability_description: Optional[str] = None
     domain: str
     process_type: str
 
@@ -393,9 +389,14 @@ async def generate_processes(payload: GenerateProcessRequest):
         
         # Call the LLM to generate processes
         logger.info(f"Calling {provider} LLM client.generate_processes...")
-        print(f"[DEBUG] /processes/generate payload: capability_name={payload.capability_name}, capability_id={payload.capability_id}, domain={payload.domain}, process_type={payload.process_type}")
+        print(f"[DEBUG] /processes/generate payload: capability_name={payload.capability_name}, capability_id={payload.capability_id}, domain={payload.domain}, process_type={payload.process_type}, capability_description={payload.capability_description}")
         try:
-            llm_result = await llm_client.generate_processes(payload.capability_name, payload.domain, payload.process_type)
+            llm_result = await llm_client.generate_processes(
+                payload.capability_name, 
+                payload.capability_description or "", 
+                payload.domain, 
+                payload.process_type
+            )
             logger.info(f"LLM returned: {llm_result}")
             print(f"[DEBUG] LLM returned: {llm_result}")
         except Exception as e:
@@ -408,48 +409,11 @@ async def generate_processes(payload: GenerateProcessRequest):
             raise HTTPException(status_code=500, detail="Failed to generate processes from LLM")
         
         generated_data = llm_result.get("data", {})
-
-        # Normalize different possible keys returned by various LLM prompts/parsers.
-        def _extract_core_processes(data):
-            # If the LLM returned a list directly, treat it as core processes
-            if isinstance(data, list):
-                return data
-            if not isinstance(data, dict):
-                return []
-
-            # Try common variants (case / spacing / snake/camel)
-            candidates = [
-                "core_processes",
-                "coreProcesses",
-                "Core Processes",
-                "core processes",
-                "core-processes",
-                "processes",
-                "core",
-            ]
-            for key in candidates:
-                if key in data:
-                    val = data.get(key)
-                    return val if isinstance(val, list) else []
-
-            # Try a case-insensitive, punctuation-insensitive match
-            lookup = {re.sub(r"[^a-z0-9]", "", k.lower()): v for k, v in data.items()}
-            for target in ("coreprocesses", "coreprocess", "processes"):
-                if target in lookup:
-                    val = lookup[target]
-                    return val if isinstance(val, list) else []
-
-            return []
-
-        core_processes = _extract_core_processes(generated_data)
-
-        if not core_processes:
-            # Provide more debug info when parsing failed so frontend can act accordingly
-            logger.error("No core processes extracted from LLM result. llm_result keys=%s raw_snippet=%s",
-                         list(generated_data.keys()) if isinstance(generated_data, dict) else type(generated_data),
-                         llm_result.get('raw', '')[:1000])
-            raise HTTPException(status_code=400, detail="No processes were generated")
         
+        logger.info(f"[DEBUG] generated_data type: {type(generated_data)}")
+        logger.info(f"[DEBUG] generated_data keys: {list(generated_data.keys()) if isinstance(generated_data, dict) else 'not a dict'}")
+        logger.info(f"[DEBUG] generated_data content: {str(generated_data)[:500]}")
+
         # Verify capability exists (just for validation; we don't persist yet)
         capability = await capability_repository.fetch_by_id(payload.capability_id)
         if not capability:
@@ -470,16 +434,14 @@ async def generate_processes(payload: GenerateProcessRequest):
             logger.error(f"Failed to save LLM response to CSV: {str(e)}")
             # Don't fail the entire request if CSV export fails, just log it
         
-        # Return the LLM-generated data WITHOUT persisting (user must approve first)
-        # Frontend will show this data in a preview modal with checkboxes, then call a separate endpoint to create selected items
+        # Return the LLM-generated data directly without restrictive parsing
+        # The LLM is already given process_type constraint, so let it generate freely
         
         return {
             "status": "success",
-            "message": f"Generated {len(core_processes)} {payload.process_type or 'core'} processes (preview only)",
+            "message": f"Generated processes for {payload.capability_name}",
             "processes": [],
-            "data": {
-                "core_processes": core_processes,
-            },
+            "data": generated_data,
             "process_type": payload.process_type or 'core',
         }
     

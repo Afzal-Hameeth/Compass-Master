@@ -7,7 +7,6 @@ interface LLMSettings {
   provider: string;
   vaultName: string;
   temperature: number;
-  maxTokens: number;
   topP: number;
 }
 
@@ -20,7 +19,6 @@ const Sidebar: React.FC = () => {
     provider: 'azure',
     vaultName: 'https://kvcapabilitycompass.vault.azure.net/',
     temperature: 0.2,
-    maxTokens: 1500,
     topP: 0.9,
   });
   const [isLoadingLLM, setIsLoadingLLM] = useState(false);
@@ -42,7 +40,6 @@ const Sidebar: React.FC = () => {
           provider: data.provider || 'azure',
           vaultName: data.vaultName || 'https://kvcapabilitycompass.vault.azure.net/',
           temperature: data.temperature ?? 0.2,
-          maxTokens: data.maxTokens ?? 1500,
           topP: data.topP ?? 0.9,
         }));
       } catch (error) {
@@ -229,22 +226,6 @@ const Sidebar: React.FC = () => {
                       className="w-full text-xs mt-1"
                     />
                     <p className="text-xs text-gray-500">Creativity level (0-1)</p>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">
-                      Max Tokens: {llmSettings.maxTokens}
-                    </label>
-                    <input
-                      type="range"
-                      min="256"
-                      max="10000"
-                      step="256"
-                      value={llmSettings.maxTokens}
-                      onChange={(e) => setLlmSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
-                      className="w-full text-xs mt-1"
-                    />
-                    <p className="text-xs text-gray-500">Response length limit</p>
                   </div>
 
                   <div>

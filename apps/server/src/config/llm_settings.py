@@ -14,7 +14,6 @@ DEFAULT_SETTINGS = {
     "provider": "azure",
     "vaultName": "https://kvcapabilitycompass.vault.azure.net/",
     "temperature": 0.5,
-    "maxTokens": 8000,
     "topP": 0.9,
 }
 
@@ -41,8 +40,6 @@ class LLMSettingsManager:
             db_data["vault_name"] = new_settings["vaultName"]
         if "temperature" in new_settings:
             db_data["temperature"] = new_settings["temperature"]
-        if "maxTokens" in new_settings:
-            db_data["max_tokens"] = new_settings["maxTokens"]
         if "topP" in new_settings:
             db_data["top_p"] = new_settings["topP"]
         

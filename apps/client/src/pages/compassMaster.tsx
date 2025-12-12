@@ -239,14 +239,39 @@ export default function Home() {
         return;
       }
 
-      const result = await generateProcesses(parentCapability.name, processCapId, parentCapability.domain || '', processLevel);
+      const result = await generateProcesses(parentCapability.name, processCapId, parentCapability.domain || '', processLevel, parentCapability.description || '');
 
       if (result.status === 'success') {
         const created = result.processes || [];
-        const coreFromLLM = result.data?.core_processes || result.data?.['Core Processes'] || [];
-
         
-        const preferSource = Array.isArray(created) && created.length > 0 ? created : coreFromLLM;
+        // Handle the new response structure: result.data is the LLM JSON with 'processes' array
+        let processesFromLLM: any[] = [];
+        
+        console.log('[DEBUG] LLM Response:', result);
+        console.log('[DEBUG] result.data:', result.data);
+        
+        if (result.data?.processes && Array.isArray(result.data.processes)) {
+          processesFromLLM = result.data.processes;
+          console.log('[DEBUG] Using result.data.processes');
+        } else if (result.data?.core_processes && Array.isArray(result.data.core_processes)) {
+          // Fallback for old response format
+          processesFromLLM = result.data.core_processes;
+          console.log('[DEBUG] Using result.data.core_processes');
+        } else if (result.data?.['Core Processes'] && Array.isArray(result.data['Core Processes'])) {
+          // Fallback for another old format
+          processesFromLLM = result.data['Core Processes'];
+          console.log('[DEBUG] Using result.data[Core Processes]');
+        } else if (Array.isArray(result.data)) {
+          // If data is directly an array
+          processesFromLLM = result.data;
+          console.log('[DEBUG] Using result.data directly as array');
+        } else {
+          console.log('[DEBUG] No processes found in result.data, checking result.data keys:', Object.keys(result.data || {}));
+        }
+
+        const preferSource = Array.isArray(created) && created.length > 0 ? created : processesFromLLM;
+        console.log('[DEBUG] processesFromLLM:', processesFromLLM);
+        console.log('[DEBUG] preferSource length:', preferSource.length);
 
         
         const normalized = (Array.isArray(preferSource) ? preferSource : []).map((proc: any, idx: number) => ({
@@ -266,6 +291,7 @@ export default function Home() {
             : [],
         }));
 
+        console.log('[DEBUG] normalized processes:', normalized);
         setGeneratedPreview(normalized);
         setSelectedGeneratedIdxs(new Set());
         setIsGeneratedModalOpen(true);
@@ -709,7 +735,7 @@ export default function Home() {
             <div className="border-b border-gray-100 px-6 py-3 bg-gray-50 flex items-center gap-3">
               <FiEdit3 className="w-5 h-5 text-blue-600" />
               <h2 className="text-lg font-bold text-gray-900">
-                {modalMode === 'view' ? 'View capability' : modalMode === 'edit' ? 'Edit capability' : 'Add capability'}
+                {modalMode === 'view' ? 'View capability' : modalMode === 'edit' ? 'Edit capability' : 'Add sub-vertical'}
               </h2>
               {capDomainName && <span className="text-xs text-gray-400 ml-2">to {capDomainName}</span>}
             </div>
@@ -718,7 +744,7 @@ export default function Home() {
               <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
                 <input
                   className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="Enter capability name..."
+                placeholder="Enter sub-vertical name..."
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   disabled={modalMode === 'view'}
@@ -726,7 +752,7 @@ export default function Home() {
                <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">Description</label>
                 <textarea
                   className="w-full bg-gray-50 border border-indigo-100 rounded-xl px-4 py-3 text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px] resize-y"
-                placeholder="Enter capability description..."
+                placeholder="Enter sub-vertical description..."
                   rows={4}
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
@@ -750,7 +776,7 @@ export default function Home() {
                   disabled={!formName.trim()}
                 >
                   <FiPlus className="w-4 h-4" />
-                    {modalMode === 'edit' ? 'Save changes' : 'Add capability'}
+                    {modalMode === 'edit' ? 'Save changes' : 'Add sub-vertical'}
                 </button>
               )}
               </div>
